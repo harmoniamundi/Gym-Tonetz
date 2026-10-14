@@ -40,16 +40,16 @@
     // Réglages (gardés dans le navigateur) et état
     // ------------------------------------------------------------------------------------------------------------------
     const DEFAULTS = {
-        fr: true, spell: 'auto', labels: true, sound: true, analysis: true, dim: true,
-        tonic: 0, mode: 'maj', dimV: 2,
+        fr: true, spell: 'auto', labels: true, sound: true, analysis: false,
+        tonic: 0, mode: 'maj',
         style: 'swing', bpm: 100, meter: '4/4', loop: true, entry: false,
         master: 50, reverb: 25, vols: { piano: 50, bass: 85, drums: 25 }
     };
     const S = Object.assign({}, DEFAULTS, store.get('tonnetz.settings', {}));
     S.vols = Object.assign({}, DEFAULTS.vols, S.vols || {});
-    // L'atténuation du hors-tonalité est active par défaut et ne dépend plus du chiffrage romain : une seule fois, on la rallume
-    if (!((store.get('tonnetz.settings', {}) || {}).dimV >= 2)) { S.dim = true; S.dimV = 2; }
     const saveSettings = () => store.set('tonnetz.settings', S);
+    // Le chiffrage romain est masqué par défaut : une seule fois, on le masque aussi chez ceux qui l'avaient gardé affiché
+    if (!(((store.get('tonnetz.settings', {}) || {}).anV) >= 2)) { S.analysis = false; S.anV = 2; saveSettings(); }
 
     const R = {
         sel: null,        // clé du triangle sélectionné
@@ -165,12 +165,6 @@
         maj: { 0: 'M', 2: 'm', 4: 'm', 5: 'M', 7: 'M', 9: 'm', 11: 'dim' },
         min: { 0: 'm', 2: 'dim', 3: 'M', 5: 'm', 7: 'm', 8: 'M', 10: 'M' }
     };
-    const FN = {
-        maj: { 0: 'T', 2: 'SD', 4: 'T', 5: 'SD', 7: 'D', 9: 'T', 11: 'D' },
-        min: { 0: 'T', 2: 'SD', 3: 'T', 5: 'SD', 7: 'D', 8: 'SD', 10: 'D' }
-    };
-    const FN_LABEL = { T: 'Tonique', SD: 'Sous-dominante', D: 'Dominante' };
-
     function triKind(st) {
         if (st.third === 'm') return st.fifth === 'b5' ? 'dim' : 'm';
         if (st.third === 'M') return st.fifth === 's5' ? 'aug' : 'M';
@@ -198,12 +192,6 @@
         if (d === 6 && info.fam === 'dom') base = '♭V';
         return ((kind === 'm' || kind === 'dim') ? lowerRoman(base) : base) + figure(info.st);
     }
-    function degreeNumeral(d) {
-        const kind = DIA[S.mode][d];
-        if (!kind) return null;
-        const base = DEG[d];
-        return (kind === 'm' || kind === 'dim') ? lowerRoman(base) + (kind === 'dim' ? '°' : '') : base;
-    }
     function isInKey(root, id) {
         const info = chordInfo(id);
         if (!info) return false;
@@ -213,18 +201,6 @@
         const got = triKind(info.st);
         return got === want || (S.mode === 'min' && d === 7 && got === 'M');
     }
-    function fnLabel(root, id) {
-        const info = chordInfo(id);
-        if (!info) return '';
-        const d = mod(root - S.tonic);
-        if (isInKey(root, id)) return FN_LABEL[FN[S.mode][d]] || '';
-        if (info.fam === 'dom') {
-            const target = degreeNumeral(mod(d + 5));
-            return target ? 'Dominante secondaire de ' + target : 'Dominante hors tonalité';
-        }
-        return 'Hors tonalité (emprunt)';
-    }
-
     // ------------------------------------------------------------------------------------------------------------------
     // Audio : écoute des notes et accords touchés ; l'orchestre (tonnetz-band.js) partage le même contexte audio
     // ------------------------------------------------------------------------------------------------------------------
@@ -292,15 +268,6 @@
         if (parent) parent.appendChild(e);
         return e;
     };
-    // flèche des segments du chemin
-    const defs = el('defs', {}, svg);
-    const marker = el('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: '8', refY: '5', markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse' }, defs);
-    const arrow = el('path', { d: 'M1 1 L9 5 L1 9 z' }, marker);
-    arrow.style.fill = 'var(--path)';
-    arrow.style.stroke = 'var(--gbg)';
-    arrow.style.strokeWidth = '1.5';
-    arrow.style.paintOrder = 'stroke';
-
     const vp = $('vp');
     const vis = { tri: new Map(), node: new Map() };      // éléments SVG existants : clé → { t, poly, tag, name, rom } / { n, g, tx }
     let built = null;                                     // zone du plan (unités du réseau) couverte par ces éléments
@@ -586,8 +553,24 @@
         if (o.play) playChord(root, id);
         refreshSelection();
     }
+    // Sélection depuis le réseau : si l'accord fait partie de la progression, la case correspondante est aussi
+    // sélectionnée en bas (triangle exact d'abord, sinon même accord ; en cas de répétition, on passe à la suivante).
+    function progIndexFor(key) {
+        const t = triByKey(key), id = triId(t);
+        const same = [], exact = [];
+        R.prog.forEach((it, i) => {
+            if (it.r !== t.root || it.id !== id) return;
+            same.push(i);
+            if (R.inst[i] && R.inst[i].key === key) exact.push(i);
+        });
+        const list = exact.length ? exact : same;
+        if (!list.length) return null;
+        const prev = R.progSel === null ? -1 : R.progSel;
+        return list.find((i) => i > prev) ?? list[0];
+    }
     function onTriTap(key) {
-        R.progSel = null;
+        const idx = S.entry ? null : progIndexFor(key);
+        R.progSel = idx;
         selectTri(key);
         if (S.entry) addCurrent();
     }
@@ -613,22 +596,27 @@
         const inprog = new Set(R.inst.filter(Boolean).map((t) => t.key));
         const isTriad = shown && (shown.id === TRI_MAJ || shown.id === TRI_MIN);
 
-        let front = null;
+        const marks = [];          // triangles à contourner : { t, cls, pr }
         for (const e of vis.tri.values()) {
             const t = e.t;
             const id = triId(t);
             const isSel = !!(sel && t.key === sel.key), isPlay = t.key === playKey, isNb = !!nbKey[t.key];
-            const outKey = S.dim && !isInKey(t.root, id);          // hors tonalité : gris (indépendant du chiffrage romain)
+            const outKey = !isInKey(t.root, id);                   // hors tonalité : toujours atténué (sa couleur se règle dans « Couleurs »)
             let cls = 'tri ' + (t.minor ? 'min' : 'maj') + ((outKey && !isNb && !isSel && !isPlay) ? ' out' : '');
-            if (inprog.has(t.key)) cls += ' inprog';
-            if (shown && isTriad && t.root === shown.root && (shown.id === id) && !(sel && t.key === sel.key)) cls += ' twin';
-            if (shown && !isTriad && t.pcs.every((p) => lit.has(p))) cls += ' near';      // triades contenues dans l'accord
-            if (!shown && R.note !== null && t.pcs.includes(R.note)) cls += ' near';        // triades qui contiennent la note
             if (isNb) cls += ' nb';
             if (isSel) cls += ' sel';
-            if (isPlay) { cls += ' play'; front = e.poly; }
-            else if (isSel) front = front || e.poly;
+            if (isPlay) cls += ' play';
             if (e.cls !== cls) { e.poly.setAttribute('class', cls); e.cls = cls; }
+            // Contours (accord de la progression, même accord ailleurs, triades contenues, sélection, accord joué) : dessinés à part,
+            // au-dessus de toutes les cases, pour qu'aucune case voisine ni aucun trait du chemin ne les recouvre.
+            let hl = '', pr = 0;
+            if (inprog.has(t.key)) { hl += ' inprog'; pr = 1; }
+            if (shown && isTriad && t.root === shown.root && (shown.id === id) && !isSel) hl += ' twin';
+            if (shown && !isTriad && t.pcs.every((p) => lit.has(p))) hl += ' near';        // triades contenues dans l'accord
+            if (!shown && R.note !== null && t.pcs.includes(R.note)) hl += ' near';          // triades qui contiennent la note
+            if (isSel) { hl += ' sel'; pr = 2; }
+            if (isPlay) { hl += ' play'; pr = 3; }
+            if (hl) marks.push({ t, cls: hl.trim(), pr });
             // couleur du texte : celle qui se lit le mieux sur la case (voir les variables --*-ink du CSS)
             const tone = isPlay ? 'play' : (isSel ? 'sel' : (isNb ? 'nb' : (t.minor ? 'min' : 'maj') + (outKey ? 'out' : '')));
             if (e.tone !== tone) {
@@ -647,7 +635,7 @@
             }
             if (e.tag.textContent !== tagTxt) e.tag.textContent = tagTxt;
         }
-        if (front && front.parentNode && front.parentNode.lastChild !== front) front.parentNode.appendChild(front);   // le contour de l'accord actif passe au-dessus
+        drawMarks(marks);
         for (const e of vis.node.values()) {
             const txt = nm(e.n.pc);
             if (e.tx.textContent !== txt) e.tx.textContent = txt;
@@ -656,58 +644,443 @@
         }
     }
 
+    // Couche des contours : un polygone sans remplissage par triangle à signaler, l'accord joué et la sélection au-dessus des autres
+    let marksSig = '';
+    function drawMarks(marks) {
+        marks.sort((a, b) => a.pr - b.pr);
+        const sig = marks.map((m) => m.t.key + ' ' + m.cls).join('|');
+        if (sig === marksSig) return;
+        marksSig = sig;
+        const layer = $('hlLayer');
+        layer.textContent = '';
+        for (const m of marks) el('polygon', { points: m.t.v.map((n) => n.x + ',' + n.y).join(' '), class: m.cls }, layer);
+    }
+
     // Choisit, pour chaque accord de la progression, le triangle qui le représente : celui qu'on avait touché, sinon la copie la plus
     // proche du précédent ; puis dessine le chemin parcouru dans le réseau.
+    // La triade du réseau qui représente un accord : lui-même s'il est une triade, sinon la triade majeure ou mineure qu'il contient
+    // (tierce 4 ou 3 et quinte juste : maj7, 7, 6, m7, 9… ; pas les accords suspendus, diminués ou augmentés).
+    function triadOfChord(id) {
+        if (id === TRI_MAJ || id === TRI_MIN) return id;
+        const o = lookupChord(id);
+        if (!o || !o.notes || !o.notes.includes(7)) return null;
+        return o.notes[1] === 4 ? TRI_MAJ : (o.notes[1] === 3 ? TRI_MIN : null);
+    }
     function computeInstances() {
         let prev = null;
         R.inst = R.prog.map((it) => {
-            if (it.id !== TRI_MAJ && it.id !== TRI_MIN) return null;
-            const minor = it.id === TRI_MIN;
+            const kind = triadOfChord(it.id);
+            if (!kind) return null;
+            const minor = kind === TRI_MIN;
             let t = it.tri ? triByKey(it.tri) : null;
             if (!t || t.root !== it.r || t.minor !== minor) t = nearestInstance(it.r, minor, prev || ORIGIN);
             if (t) prev = t;
             return t;
         });
     }
+    // Flèches de la progression (forme de secours : ruban droit à pointe anguleuse, utilisé seulement si le calcul de chemin échoue ; voir arrowD).
+    // Pour chaque passage d'un accord au suivant, une forme pleine (corps + pointe) tracée au-dessus de tout.
+    // Entre deux triangles voisins la flèche est courte et centrée sur leur arête commune ; plus loin, elle part près du centre
+    // du premier triangle et s'arrête près de celui du second, pour ne pas masquer leurs inscriptions.
+    function arrowShape(a, b, both) {
+        const dx = b.cx - a.cx, dy = b.cy - a.cy, dist = Math.hypot(dx, dy) || 1;
+        const ux = dx / dist, uy = dy / dist, nx = -uy, ny = ux;
+        const trim = Math.max(0, Math.min(34, (dist - 50) / 2));
+        const L = dist - 2 * trim, hl = Math.min(18, L * (both ? 0.3 : 0.5)), hw = 9, sw = 2.8;     // longueur de pointe, demi-largeur de pointe et de corps
+        const P = (t, w) => (a.cx + ux * (trim + t) + nx * w).toFixed(1) + ' ' + (a.cy + uy * (trim + t) + ny * w).toFixed(1);
+        if (both) {        // aller-retour : une seule flèche à deux pointes
+            return `M${P(0, 0)} L${P(hl, -hw)} L${P(hl, -sw)} L${P(L - hl, -sw)} L${P(L - hl, -hw)} L${P(L, 0)} L${P(L - hl, hw)} L${P(L - hl, sw)} L${P(hl, sw)} L${P(hl, hw)} Z`;
+        }
+        return `M${P(0, -sw)} L${P(L - hl, -sw)} L${P(L - hl, -hw)} L${P(L, 0)} L${P(L - hl, hw)} L${P(L - hl, sw)} L${P(0, sw)} Z`;
+    }
+    // ---- Forme des flèches : un ruban lisse qui contourne les noms d'accord ----
+    // Pour chaque passage d'un accord au suivant, on cherche un chemin dans l'espace libre entre les inscriptions (noms d'accord, chiffrages
+    // romains, puis cercles des notes quand c'est possible) : recherche du plus court chemin sur une grille fine, puis chemin « élastique »
+    // lissé qui reste à distance des inscriptions. La flèche est un ruban sans aucun angle droit : bout arrondi, corps qui s'évase en
+    // douceur en une pointe effilée, et, si la place manque, une pointe plus petite.
+    const ARROW_HEADS = [[18, 9], [14, 7.5], [11, 6]];       // [longueur, demi-largeur] de la pointe, de la plus grande à la plus petite
+    const ARROW_BODY = 2.8;                                  // demi-largeur du corps
+    const fontW = new Map();
+    let measureCtx = null;
+    // Largeur d'un nom d'accord (police des accords, 21 px gras), mesurée une fois puis gardée
+    function textWidth(s) {
+        let w = fontW.get(s);
+        if (w !== undefined) return w;
+        try {
+            if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+            measureCtx.font = '700 21px ' + (getComputedStyle(document.documentElement).getPropertyValue('--font-chord') || 'serif');
+            w = measureCtx.measureText(s).width;
+        } catch (e) { w = s.length * 12; }
+        fontW.set(s, w);
+        return w;
+    }
+    // Encombrement des inscriptions d'un triangle (rectangles), tel qu'il est dessiné par makeTri / paint
+    function labelRects(t) {
+        const up = t.kind === 'u', id = triId(t), out = [];
+        const name = S.labels ? chordName(t.root, id) : '';
+        if (name) { const hw = textWidth(name) / 2 + 1.5, yb = t.cy + (up ? 9 : 4); out.push({ k: 'r', x0: t.cx - hw, x1: t.cx + hw, y0: yb - 16, y1: yb + 5 }); }
+        const rom = S.analysis ? romanOf(t.root, id) : '';
+        if (rom) { const hw = romWidth(rom) / 2, yr = t.cy + (up ? 29 : 25); out.push({ k: 'r', x0: t.cx - hw, x1: t.cx + hw, y0: yr - 13, y1: yr + 5 }); }
+        if (!out.length) out.push({ k: 'r', x0: t.cx - 9, x1: t.cx + 9, y0: t.cy - 9, y1: t.cy + 9 });   // rien d'écrit : un petit repère au centre
+        return out;
+    }
+    const obDist = (o, x, y) => (o.k === 'r'
+        ? Math.hypot(Math.max(o.x0 - x, 0, x - o.x1), Math.max(o.y0 - y, 0, y - o.y1))
+        : Math.max(0, Math.hypot(x - o.x, y - o.y) - o.r));
+    // Point de l'obstacle le plus proche de (x, y) : { d, x, y } (d = 0 à l'intérieur : on sort par le bord le plus proche)
+    function obNearest(o, x, y) {
+        if (o.k === 'c') {
+            const dx = x - o.x, dy = y - o.y, h = Math.hypot(dx, dy) || 1;
+            return { d: Math.max(0, h - o.r), x: o.x + dx / h * o.r, y: o.y + dy / h * o.r };
+        }
+        const px = Math.min(o.x1, Math.max(o.x0, x)), py = Math.min(o.y1, Math.max(o.y0, y));
+        const d = Math.hypot(x - px, y - py);
+        if (d > 0) return { d, x: px, y: py };
+        const l = x - o.x0, r = o.x1 - x, u = y - o.y0, b = o.y1 - y, m = Math.min(l, r, u, b);
+        if (m === l) return { d: 0, x: o.x0, y }; if (m === r) return { d: 0, x: o.x1, y };
+        return m === u ? { d: 0, x, y: o.y0 } : { d: 0, x, y: o.y1 };
+    }
+    const inTriangle = (t, x, y) => {
+        const [p, q, r] = t.v;
+        const s1 = (q.x - p.x) * (y - p.y) - (q.y - p.y) * (x - p.x), s2 = (r.x - q.x) * (y - q.y) - (r.y - q.y) * (x - q.x), s3 = (p.x - r.x) * (y - r.y) - (p.y - r.y) * (x - r.x);
+        return (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0);
+    };
+    // Obstacles autour de deux triangles : inscriptions de tous les triangles de la zone, et (si demandé) cercles des notes
+    function arrowObstacles(a, b, withNodes, pad) {
+        const box = { x0: Math.min(a.cx, b.cx) - pad, x1: Math.max(a.cx, b.cx) + pad, y0: Math.min(a.cy, b.cy) - pad, y1: Math.max(a.cy, b.cy) + pad };
+        const obs = [];
+        const jMin = Math.floor(-box.y1 / DY) - 1, jMax = Math.ceil(-box.y0 / DY) + 1;
+        for (let j = jMin; j <= jMax; j++) {
+            const iMin = Math.floor(box.x0 / DX - j / 2) - 1, iMax = Math.ceil(box.x1 / DX - j / 2) + 1;
+            for (let i = iMin; i <= iMax; i++) {
+                for (const kind of ['u', 'd']) {
+                    const t = T(kind, i, j);
+                    if (t.cx >= box.x0 - 20 && t.cx <= box.x1 + 20 && t.cy >= box.y0 - 20 && t.cy <= box.y1 + 20) obs.push(...labelRects(t));
+                }
+                if (withNodes) { const n = N(i, j); if (n.x >= box.x0 && n.x <= box.x1 && n.y >= box.y0 && n.y <= box.y1) obs.push({ k: 'c', x: n.x, y: n.y, r: 24 }); }
+            }
+        }
+        return { obs, box };
+    }
+    // Plus court chemin (Dijkstra sur grille, 8 voisins) des abords des inscriptions de a vers ceux de b, en restant à au moins `clear` px
+    // de tout obstacle et en préférant le milieu des passages. Renvoie la liste de points, ou null.
+    function arrowRoute(a, b, obs, box, clear, avoid) {
+        const cs = Math.max(3, Math.ceil(Math.sqrt((box.x1 - box.x0) * (box.y1 - box.y0) / 22000)));
+        const W = Math.ceil((box.x1 - box.x0) / cs), H = Math.ceil((box.y1 - box.y0) / cs);
+        const X = (i) => box.x0 + (i + 0.5) * cs, Y = (j) => box.y0 + (j + 0.5) * cs;
+        const D = new Float32Array(W * H).fill(99);
+        for (const o of obs) {
+            const bx0 = o.k === 'r' ? o.x0 : o.x - o.r, bx1 = o.k === 'r' ? o.x1 : o.x + o.r, by0 = o.k === 'r' ? o.y0 : o.y - o.r, by1 = o.k === 'r' ? o.y1 : o.y + o.r;
+            const i0 = Math.max(0, Math.floor((bx0 - 12 - box.x0) / cs)), i1 = Math.min(W - 1, Math.floor((bx1 + 12 - box.x0) / cs));
+            const j0 = Math.max(0, Math.floor((by0 - 12 - box.y0) / cs)), j1 = Math.min(H - 1, Math.floor((by1 + 12 - box.y0) / cs));
+            for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const d = obDist(o, X(i), Y(j)); if (d < D[j * W + i]) D[j * W + i] = d; }
+        }
+        // trajets des autres flèches : coût élevé à moins de 9 px (on peut les croiser, mais pas les longer)
+        const A = new Float32Array(W * H).fill(99);
+        if (avoid) for (const pl of avoid) for (const q of pl) {
+            const i0 = Math.max(0, Math.floor((q.x - 10 - box.x0) / cs)), i1 = Math.min(W - 1, Math.floor((q.x + 10 - box.x0) / cs));
+            const j0 = Math.max(0, Math.floor((q.y - 10 - box.y0) / cs)), j1 = Math.min(H - 1, Math.floor((q.y + 10 - box.y0) / cs));
+            for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const d = Math.hypot(X(i) - q.x, Y(j) - q.y); if (d < A[j * W + i]) A[j * W + i] = d; }
+        }
+        // départs et arrivées : cases libres du triangle, dans une bande étroite autour des inscriptions de ce triangle
+        const ring = (t) => {
+            const own = labelRects(t), res = [];
+            const i0 = Math.max(0, Math.floor((t.cx - 70 - box.x0) / cs)), i1 = Math.min(W - 1, Math.floor((t.cx + 70 - box.x0) / cs));
+            const j0 = Math.max(0, Math.floor((t.cy - 60 - box.y0) / cs)), j1 = Math.min(H - 1, Math.floor((t.cy + 60 - box.y0) / cs));
+            for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+                if (D[j * W + i] < clear) continue;
+                if (!inTriangle(t, X(i), Y(j))) continue;
+                let d = 99; for (const o of own) d = Math.min(d, obDist(o, X(i), Y(j)));
+                if (d <= clear + cs + 1) res.push(j * W + i);        // bande étroite juste à la limite autorisée : la flèche part et finit tout près du nom
+            }
+            return res;
+        };
+        const src = ring(a), dst = ring(b);
+        if (!src.length || !dst.length) return null;
+        const isDst = new Uint8Array(W * H); dst.forEach((k) => { isDst[k] = 1; });
+        const cost = new Float32Array(W * H).fill(Infinity), prev = new Int32Array(W * H).fill(-1), done = new Uint8Array(W * H);
+        const hk = [], hv = [];                       // tas binaire (clé, valeur)
+        const push = (k, v) => {
+            let i = hk.length; hk.push(k); hv.push(v);
+            while (i > 0) { const p = (i - 1) >> 1; if (hk[p] <= k) break; hk[i] = hk[p]; hv[i] = hv[p]; i = p; }
+            hk[i] = k; hv[i] = v;
+        };
+        const pop = () => {
+            const rk = hk[0], rv = hv[0], k = hk.pop(), v = hv.pop(), n = hk.length;
+            if (n) {
+                let i = 0;
+                for (;;) { let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && hk[c + 1] < hk[c]) c++; if (hk[c] >= k) break; hk[i] = hk[c]; hv[i] = hv[c]; i = c; }
+                hk[i] = k; hv[i] = v;
+            }
+            return [rk, rv];
+        };
+        src.forEach((k) => { cost[k] = 0; push(0, k); });
+        let goal = -1;
+        while (hk.length) {
+            const [c, k] = pop();
+            if (done[k]) continue;
+            done[k] = 1;
+            if (isDst[k]) { goal = k; break; }
+            const i = k % W, j = (k / W) | 0;
+            for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+                if (!di && !dj) continue;
+                const ni = i + di, nj = j + dj;
+                if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+                const nk = nj * W + ni;
+                if (done[nk] || D[nk] < clear) continue;
+                if (di && dj && (D[j * W + ni] < clear || D[nj * W + i] < clear)) continue;      // pas de coupe de coin entre deux obstacles
+                const near = D[nk] < 12 ? (12 - D[nk]) / 12 : 0;
+                const pen = A[nk] < 9 ? (9 - A[nk]) / 9 * 7 : 0;
+                const nc = c + (di && dj ? 1.414 : 1) * cs * (1 + 0.9 * near + pen);
+                if (nc < cost[nk]) { cost[nk] = nc; prev[nk] = k; push(nc, nk); }
+            }
+        }
+        if (goal < 0) return null;
+        const pts = [];
+        for (let k = goal; k >= 0; k = prev[k]) pts.push({ x: X(k % W), y: Y((k / W) | 0) });
+        return pts.reverse();
+    }
+    function resample(pts, step) {
+        const out = [{ x: pts[0].x, y: pts[0].y }];
+        let carry = 0;
+        for (let i = 1; i < pts.length; i++) {
+            const p = pts[i - 1], q = pts[i], len = Math.hypot(q.x - p.x, q.y - p.y);
+            let pos = step - carry;
+            while (pos <= len) { out.push({ x: p.x + (q.x - p.x) * pos / len, y: p.y + (q.y - p.y) * pos / len }); pos += step; }
+            carry = len - (pos - step);
+        }
+        const last = pts[pts.length - 1], e = out[out.length - 1];
+        if (Math.hypot(last.x - e.x, last.y - e.y) > step * 0.35) out.push({ x: last.x, y: last.y }); else out[out.length - 1] = { x: last.x, y: last.y };
+        return out;
+    }
+    // Chemin « élastique » : on lisse (chaque point vers la moyenne de ses voisins) et on repousse les points trop proches d'un obstacle
+    function relaxRoute(route, obs, lo) {
+        let p = resample(route, 3);
+        if (p.length < 3) return p;
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        p.forEach((q) => { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); });
+        const near = obs.filter((o) => (o.k === 'r' ? o.x1 > x0 - 40 && o.x0 < x1 + 40 && o.y1 > y0 - 40 && o.y0 < y1 + 40 : o.x > x0 - 60 && o.x < x1 + 60 && o.y > y0 - 60 && o.y < y1 + 60));
+        const smooth = () => {
+            const q = p.map((s) => ({ x: s.x, y: s.y }));
+            for (let i = 1; i < p.length - 1; i++) { q[i].x = 0.5 * p[i].x + 0.25 * (p[i - 1].x + p[i + 1].x); q[i].y = 0.5 * p[i].y + 0.25 * (p[i - 1].y + p[i + 1].y); }
+            p = q;
+        };
+        const pushOut = () => {
+            for (let i = 1; i < p.length - 1; i++) {
+                for (const o of near) {
+                    const h = obNearest(o, p[i].x, p[i].y);
+                    if (h.d >= lo) continue;
+                    let dx = p[i].x - h.x, dy = p[i].y - h.y, l = Math.hypot(dx, dy);
+                    if (l < 1e-6) { const c = o.k === 'r' ? { x: (o.x0 + o.x1) / 2, y: (o.y0 + o.y1) / 2 } : o; dx = p[i].x - c.x; dy = p[i].y - c.y; l = Math.hypot(dx, dy) || 1; }
+                    const m = h.d > 0 ? lo - h.d : lo + 0.5;
+                    p[i].x += dx / l * m; p[i].y += dy / l * m;
+                }
+            }
+        };
+        for (let it = 0; it < 60; it++) { smooth(); pushOut(); }
+        // dernier lissage libre (sans repousser) pour effacer les plis, aussi long que possible tant que le chemin reste à distance des inscriptions
+        const base = p.map((q) => ({ x: q.x, y: q.y }));
+        for (const passes of [40, 20, 10, 4, 0]) {
+            p = base.map((q) => ({ x: q.x, y: q.y }));
+            for (let it = 0; it < passes; it++) smooth();
+            if (!passes || minClear(p, near) >= Math.min(1.8, lo - 0.5)) break;
+        }
+        return p;
+    }
+    // Raccourcit les bouts d'un chemin tant qu'ils partent en crochet (virage serré dans les 12 premiers px)
+    function trimHooks(c) {
+        let q = resample(c, 3);
+        const hooked = (a) => { let m = 0; for (let i = 1; i < a.length - 1; i++) { const a1 = Math.atan2(a[i].y - a[i - 1].y, a[i].x - a[i - 1].x), a2 = Math.atan2(a[i + 1].y - a[i].y, a[i + 1].x - a[i].x); let d = Math.abs(a2 - a1); if (d > Math.PI) d = 2 * Math.PI - d; m = Math.max(m, d); } return m > 0.35; };
+        while (q.length > 8 && hooked(q.slice(0, 5))) q.shift();
+        while (q.length > 8 && hooked(q.slice(-5))) q.pop();
+        return q;
+    }
+    // Courbure maximale d'un chemin (angle entre deux pas successifs de 3 px, en radians) : au-delà de 0,3 il y a un pli
+    function maxTurn(c) {
+        const q = resample(c, 3);
+        let m = 0;
+        for (let i = 1; i < q.length - 1; i++) {
+            const a1 = Math.atan2(q[i].y - q[i - 1].y, q[i].x - q[i - 1].x), a2 = Math.atan2(q[i + 1].y - q[i].y, q[i + 1].x - q[i].x);
+            let d = Math.abs(a2 - a1); if (d > Math.PI) d = 2 * Math.PI - d;
+            m = Math.max(m, d);
+        }
+        return m;
+    }
+    const minClear = (pts, obs) => { let m = 99; for (const q of pts) for (const o of obs) { const d = obDist(o, q.x, q.y); if (d < m) m = d; } return m; };
+    // Ruban : bout arrondi, corps de largeur constante qui suit la courbe, puis une pointe triangulaire à base droite (une à chaque bout
+    // si `both`), comme les flèches droites d'origine.
+    function ribbon(center, both, hl, hw) {
+        const c = resample(center, 2), n = c.length;
+        const s = [0]; for (let i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(c[i].x - c[i - 1].x, c[i].y - c[i - 1].y));
+        const L = s[n - 1], sw = ARROW_BODY;
+        // point et normale du chemin à l'abscisse curviligne sv
+        const at = (sv) => {
+            let i = 1; while (i < n - 1 && s[i] < sv) i++;
+            const a = c[i - 1], b = c[i], f = Math.max(0, Math.min(1, (sv - s[i - 1]) / ((s[i] - s[i - 1]) || 1))), tl = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+            return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, nx: -(b.y - a.y) / tl, ny: (b.x - a.x) / tl };
+        };
+        const s0 = both ? hl : 0, s1 = L - hl;
+        const P0 = at(s0), P1 = at(s1);
+        const left = [[P0.x + P0.nx * sw, P0.y + P0.ny * sw]], right = [[P0.x - P0.nx * sw, P0.y - P0.ny * sw]];
+        for (let i = 1; i < n - 1; i++) {
+            if (s[i] <= s0 + 0.5 || s[i] >= s1 - 0.5) continue;
+            const a = c[i - 1], b = c[i + 1], tl = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / tl, ny = (b.x - a.x) / tl;
+            left.push([c[i].x + nx * sw, c[i].y + ny * sw]); right.push([c[i].x - nx * sw, c[i].y - ny * sw]);
+        }
+        left.push([P1.x + P1.nx * sw, P1.y + P1.ny * sw]); right.push([P1.x - P1.nx * sw, P1.y - P1.ny * sw]);
+        // pointe : base droite (perpendiculaire à la direction base → pointe), élargie à hw, sommet au bout du chemin
+        const head = (B, tip) => {
+            const dx = tip.x - B.x, dy = tip.y - B.y, dl = Math.hypot(dx, dy) || 1;
+            let nx = -dy / dl, ny = dx / dl;
+            if (nx * B.nx + ny * B.ny < 0) { nx = -nx; ny = -ny; }
+            return { l: [B.x + nx * hw, B.y + ny * hw], r: [B.x - nx * hw, B.y - ny * hw], t: [tip.x, tip.y] };
+        };
+        const he = head(P1, c[n - 1]);
+        let all;
+        if (both) {
+            const hs = head(P0, c[0]);
+            all = [hs.t, hs.l].concat(left, [he.l, he.t, he.r], right.reverse(), [hs.r]);
+        } else {
+            // bout arrondi : demi-cercle derrière le point de départ
+            const a = c[0], b = c[Math.min(n - 1, 1)], tl = Math.hypot(b.x - a.x, b.y - a.y) || 1, tx = (b.x - a.x) / tl, ty = (b.y - a.y) / tl, cap = [];
+            for (let k = 1; k < 8; k++) { const th = Math.PI * k / 8; cap.push([a.x + sw * (ty * Math.cos(th) - tx * Math.sin(th)), a.y + sw * (-tx * Math.cos(th) - ty * Math.sin(th))]); }
+            all = left.concat([he.l, he.t, he.r], right.reverse(), cap);
+        }
+        const f = (q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+        // points de contrôle des collisions : le contour, échantillonné tous les 3 px
+        const pts = [];
+        for (let i = 0; i < all.length; i++) {
+            const p = all[i], q = all[(i + 1) % all.length], len = Math.hypot(q[0] - p[0], q[1] - p[1]), k = Math.max(1, Math.ceil(len / 3));
+            for (let j = 0; j < k; j++) pts.push({ x: p[0] + (q[0] - p[0]) * j / k, y: p[1] + (q[1] - p[1]) * j / k });
+        }
+        return { d: 'M' + f(all[0]) + ' ' + all.slice(1).map((q) => 'L' + f(q)).join(' ') + ' Z', pts, L };
+    }
+    // La police des accords (Kalam) se charge après la page : les largeurs mesurées avant son arrivée sont à refaire
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fontW.clear(); arrowCache.clear(); drawPath(); }).catch(() => {});
+    const arrowCache = new Map();
+    let arrowSig = '';
+    // Longueur (px) sur laquelle un chemin longe de très près d'autres flèches déjà placées (un croisement bref en vaut ~15)
+    function overlapLen(center, placed) {
+        let n = 0;
+        for (const q of resample(center, 3)) {
+            let hit = false;
+            for (const pl of placed) { for (const r of pl) { const dx = q.x - r.x, dy = q.y - r.y; if (dx * dx + dy * dy < 49) { hit = true; break; } } if (hit) break; }
+            if (hit) n++;
+        }
+        return n * 3;
+    }
+    // Forme { d, center } de la flèche de a vers b. `placed` : trajets des flèches déjà dessinées (échantillonnés) ; si la flèche en
+    // longe une sur plus d'un croisement, on la recalcule en évitant ces trajets (un croisement court reste permis).
+    function arrowD(a, b, both, placed) {
+        const sig = JSON.stringify([S.labels, S.analysis, S.fr, S.spell, S.tonic, S.mode]);
+        if (sig !== arrowSig) { arrowSig = sig; arrowCache.clear(); }
+        const key = a.key + '|' + b.key + '|' + (both ? 2 : 1);
+        let r = arrowCache.get(key);
+        if (r === undefined) {
+            try { r = computeArrow(a, b, both, null); } catch (e) { console.warn('Flèche :', e); r = null; }
+            if (r === null) r = { d: arrowShape(a, b, both), center: [{ x: a.cx, y: a.cy }, { x: b.cx, y: b.cy }] };
+            arrowCache.set(key, r);
+        }
+        if (placed && placed.length && overlapLen(r.center, placed) > 24) {
+            try { const r2 = computeArrow(a, b, both, placed); if (r2) return r2; } catch (e) { console.warn('Flèche :', e); }
+        }
+        return r;
+    }
+    const pathLen = (c) => c.reduce((s, q, i) => s + (i ? Math.hypot(q.x - c[i - 1].x, q.y - c[i - 1].y) : 0), 0);
+    function computeArrow(a, b, both, avoid) {
+        const dist = Math.hypot(b.cx - a.cx, b.cy - a.cy);
+        const MIN_L = 26;                      // une flèche plus courte n'est qu'une tache : on desserre alors la distance aux inscriptions
+        let fallback = null;                   // meilleur chemin trouvé quand aucun n'est parfait
+        for (const withNodes of [true, false]) {                      // d'abord en évitant aussi les cercles des notes, sinon seulement les inscriptions
+            const { obs, box } = arrowObstacles(a, b, withNodes, 70);
+            for (const clear of [7, 5, 3.5, 2.5, 1.5]) {
+                const route = arrowRoute(a, b, obs, box, clear, avoid);
+                if (!route) continue;
+                let center = trimHooks(relaxRoute(route, obs, Math.max(2, clear - 0.5)));
+                if (pathLen(center) < 45) {            // flèche courte (accords voisins) : un trait droit, sans crochet, s'il passe
+                    const line = [center[0], center[center.length - 1]];
+                    if (minClear(resample(line, 2), obs) >= Math.min(2, clear)) center = line;
+                }
+                const L = pathLen(center), mc = minClear(center, obs);
+                if (mc < 1.2) continue;
+                const turn = maxTurn(center);
+                if (!fallback || (turn <= 0.3 ? 1 : 0) + L / 1000 > (fallback.smooth ? 1 : 0) + fallback.L / 1000) fallback = { center, L, smooth: turn <= 0.3 };
+                if (L < MIN_L || turn > 0.3) continue;
+                for (const [hl0, hw0] of ARROW_HEADS) {               // pointe de plus en plus petite jusqu'à ce qu'elle ne touche plus rien
+                    const hl = Math.min(hl0, L * (both ? 0.3 : 0.5));
+                    const r = ribbon(center, both, hl, Math.min(hw0, hl * 0.65));
+                    if (minClear(r.pts, obs) >= 0.6) return { d: r.d, center };
+                }
+            }
+        }
+        if (fallback) {
+            const hl = Math.min(ARROW_HEADS[1][0], fallback.L * (both ? 0.3 : 0.5));
+            return { d: ribbon(fallback.center, both, hl, Math.min(ARROW_HEADS[1][1], hl * 0.65)).d, center: fallback.center };
+        }
+        // pas de passage : ruban droit entre les deux accords (comme avant, mais lisse)
+        const ux = (b.cx - a.cx) / (dist || 1), uy = (b.cy - a.cy) / (dist || 1), trim = Math.max(13, Math.min(34, (dist - 50) / 2));
+        const line = [{ x: a.cx + ux * trim, y: a.cy + uy * trim }, { x: b.cx - ux * trim, y: b.cy - uy * trim }];
+        const L = dist - 2 * trim;
+        return { d: ribbon(line, both, Math.min(18, L * (both ? 0.3 : 0.5)), 9).d, center: line };
+    }
+
     function drawPath() {
-        const layer = $('pathLayer');
+        const layer = $('arrowLayer');
         layer.textContent = '';
         const pts = R.inst.filter(Boolean);
         if (pts.length === 0) return;
+        // Un passage A → B et un passage B → A (n'importe où dans la progression) ne font qu'une flèche à deux pointes ;
+        // un passage répété dans le même sens n'est dessiné qu'une fois.
+        const pairs = new Map();
         for (let k = 0; k + 1 < pts.length; k++) {
             const a = pts[k], b = pts[k + 1];
             if (a === b) continue;
-            const dx = b.cx - a.cx, dy = b.cy - a.cy, len = Math.hypot(dx, dy) || 1;
-            const sx = a.cx + dx / len * 34, sy = a.cy + dy / len * 34, ex = b.cx - dx / len * 40, ey = b.cy - dy / len * 40;
-            el('path', { d: `M${sx} ${sy} L${ex} ${ey}`, class: 'halo' }, layer);       // liseré de la couleur du fond : le trait reste lisible sur toutes les cases
-            el('path', { d: `M${sx} ${sy} L${ex} ${ey}`, class: 'seg', 'marker-end': 'url(#arrow)' }, layer);
+            const fwd = a.key < b.key, key = fwd ? a.key + '|' + b.key : b.key + '|' + a.key;
+            let e = pairs.get(key);
+            if (!e) { e = { a, b, fwd: false, back: false }; pairs.set(key, e); }
+            if (a === e.a) e.fwd = true; else e.back = true;
         }
-        const s = pts[0];
-        const dot = el('circle', { cx: s.cx, cy: s.cy - (s.kind === 'u' ? 56 : 50), r: 13, class: 'stepdot' }, layer);
-        const lab = el('text', { x: s.cx, y: s.cy - (s.kind === 'u' ? 56 : 50) }, layer);
-        lab.textContent = '1';
-        void dot;
+        const placed = [];     // trajets des flèches déjà dessinées : les suivantes évitent de les longer (elles peuvent les croiser)
+        for (const e of pairs.values()) {
+            const r = arrowD(e.a, e.b, e.fwd && e.back, placed);
+            el('path', { d: r.d, class: 'arrow' }, layer);
+            placed.push(resample(r.center, 3));
+        }
+        const s = pts[0], y = s.cy - (s.kind === 'u' ? 48 : 50);
+        el('circle', { cx: s.cx, cy: y, r: 13, class: 'stepdot' }, layer);
+        el('text', { x: s.cx, y }, layer).textContent = '1';
     }
 
     // ------------------------------------------------------------------------------------------------------------------
     // Panneau d'information sous le réseau
     // ------------------------------------------------------------------------------------------------------------------
-    function chordNotesText(root, id) {
-        return chordPcs(root, id).map(nm).join(' – ');
+    // Nom de l'accord et notes, comme dans Chord Scales : un clic sur le nom joue l'accord en arpège, un clic sur une note la joue
+    // (à la hauteur qu'elle a dans l'accord).
+    const chordAbs = (root, id) => stackIntervalsUp(lookupChord(id).notes).map((iv) => mod(root) + iv);
+    function playArpeggio(root, id) { playAbs(chordAbs(root, id), { roll: 0.17, dur: 1.5 }); }
+    function chordHead(root, id) {
+        const notes = chordPcs(root, id).map((pc, i) => `<button type="button" class="cnote" data-act="note" data-i="${i}" title="Jouer ${esc(nm(pc))}">${esc(nm(pc))}</button>`).join('');
+        return `<div class="chordhead" data-root="${root}" data-id="${esc(id)}">
+            <button type="button" class="cname" data-act="arp" title="Jouer l'accord en arpège">${esc(chordName(root, id))}</button>
+            <span class="cnotes">${notes}</span></div>`;
     }
-    function tagsFor(root, id) {
-        if (!S.analysis) return '';
-        const num = romanOf(root, id), fn = fnLabel(root, id);
-        return `<div class="tags"><span class="tag"><b>${esc(num)}</b> en ${esc(nm(S.tonic))} ${S.mode === 'maj' ? 'majeur' : 'mineur'}</span>`
-            + (fn ? `<span class="tag">${esc(fn)}</span>` : '') + '</div>';
+    // Clic sur le nom (arpège) ou sur une note de la fiche d'accord ; renvoie true si le clic a été traité
+    function onHeadClick(b) {
+        const act = b.dataset.act;
+        if (act === 'solo') { if (R.note !== null) playNote(R.note); return true; }
+        if (act !== 'arp' && act !== 'note') return false;
+        const head = b.closest('.chordhead');
+        const root = parseInt(head.dataset.root, 10), id = head.dataset.id;
+        if (act === 'arp') playArpeggio(root, id);
+        else playAbs([chordAbs(root, id)[parseInt(b.dataset.i, 10)]], { dur: 1.6 });
+        return true;
     }
     function renderInfo() {
         const box = $('info');
         const playItem = R.playing >= 0 ? R.prog[R.playing] : null;
         const cur = current();
         if (playItem) {
-            box.innerHTML = `<div class="title">${esc(chordName(playItem.r, playItem.id))}</div>
-                <div class="notes">${esc(chordNotesText(playItem.r, playItem.id))}</div>${tagsFor(playItem.r, playItem.id)}
+            box.innerHTML = `${chordHead(playItem.r, playItem.id)}
                 <div class="hint">Accord ${R.playing + 1} sur ${R.prog.length}</div>`;
             return;
         }
@@ -716,21 +1089,17 @@
             const btn = (op, label) => {
                 let target = nb[op] ? triByKey(nb[op]) : null;
                 if (!target) { const r = riemann(t, op); target = nearestInstance(r.root, r.minor, t); }
-                return `<button type="button" class="btn small" data-act="nb" data-key="${target.key}" title="${label}">${op} → ${esc(chordName(target.root, triId(target)))}</button>`;
+                return `<button type="button" class="btn small" data-act="nb" data-key="${target.key}" title="${label}"><b>${op}</b> → ${esc(chordName(target.root, triId(target)))}</button>`;
             };
-            box.innerHTML = `<div class="title">${esc(chordName(t.root, cur.id))} <span class="hint">${t.minor ? 'triade mineure' : 'triade majeure'}</span></div>
-                <div class="notes">${esc(chordNotesText(t.root, cur.id))}</div>${tagsFor(t.root, cur.id)}
-                <div class="row tight"><span class="label">Transformations</span>${btn('P', 'Parallèle : même fondamentale')}${btn('L', 'Sensible : la quinte monte ou la fondamentale descend d\'un demi-ton')}${btn('R', 'Relatif')}</div>
-                <div class="row"><button type="button" class="btn" data-act="add">+ Ajouter à la progression</button></div>`;
+            box.innerHTML = `${chordHead(t.root, cur.id)}
+                <div class="trans" role="group" aria-label="Transformations">${btn('P', 'Parallèle : même fondamentale')}${btn('L', 'Sensible : la quinte monte ou la fondamentale descend d\'un demi-ton')}${btn('R', 'Relatif')}</div>`;
             return;
         }
         if (cur && cur.kind === 'custom') {
             const st = cbStateOfId(cur.id);
-            box.innerHTML = `<div class="title">${esc(chordName(cur.root, cur.id))}</div>
-                <div class="notes">${esc(chordNotesText(cur.root, cur.id))}</div>
-                <div class="hint">${esc(st ? cbFullName(st) : '')}</div>${tagsFor(cur.root, cur.id)}
-                <div class="hint">Les triangles entourés sont les triades contenues dans cet accord.</div>
-                <div class="row"><button type="button" class="btn" data-act="add">+ Ajouter à la progression</button></div>`;
+            box.innerHTML = `${chordHead(cur.root, cur.id)}
+                <div class="hint">${esc(st ? cbFullName(st) : '')}</div>
+                <div class="hint">Les triangles entourés sont les triades contenues dans cet accord.</div>`;
             return;
         }
         if (R.note !== null) {
@@ -740,13 +1109,13 @@
                 const t = nearestInstance(r, m, null);
                 return `<button type="button" class="btn small" data-act="nb" data-key="${t.key}">${esc(chordName(r, m ? TRI_MIN : TRI_MAJ))}</button>`;
             }).join('');
-            box.innerHTML = `<div class="title">${esc(nm(n))}</div>
+            box.innerHTML = `<div class="chordhead"><button type="button" class="cname" data-act="solo" title="Jouer la note">${esc(nm(n))}</button></div>
                 <div class="hint">Cette note revient à de nombreux endroits du réseau (un cercle plein par copie). Les triangles entourés la contiennent.</div>
                 <div class="row tight"><span class="label">Accords qui la contiennent</span>${btns}</div>`;
             return;
         }
         box.innerHTML = `<div class="hint">Touchez un <b>triangle</b> pour entendre un accord et voir ses voisins P, L et R, ou une <b>note</b> (un cercle) pour la repérer partout dans le réseau.
-            Construisez ensuite une progression avec les réglages de gauche.</div>`;
+            Construisez ensuite une progression avec les boutons sous le réseau.</div>`;
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -766,7 +1135,13 @@
         R.progSel = R.prog.length - 1;
         progChanged();
     }
+    // Toute modification de la progression passe par progChanged() : elle est enregistrée dans l'historique
+    // (annuler / rétablir) si le contenu a vraiment changé, puis l'affichage est rafraîchi.
     function progChanged() {
+        histRecord();
+        progRefresh();
+    }
+    function progRefresh() {
         computeInstances();
         syncBandGrid();
         store.set('tonnetz.work', snapshot('travail'));
@@ -774,34 +1149,117 @@
         drawPath();
         paint();
         renderInfo();
+        updateUndoButtons();
+    }
+
+    // ---- Demi-mesures ----
+    // Une durée « ½ » (it.m === 0.5) partage une mesure entre deux accords : deux accords ½ consécutifs sont fusionnés en UN pas
+    // d'une mesure portant un second accord (step.split, format de la Jam de Chord Scales : 1er accord sur la première moitié de
+    // la mesure, 2e sur la seconde). Un ½ qui n'a pas de ½ voisin à sa suite reste seul et sonne comme une mesure entière.
+    // Retourne : steps (pas de grille de l'orchestre / de l'export), chips[pas] = indices des accords du pas,
+    // pairPos[i] = 'a' | 'b' (accord faisant partie d'une paire) et lone[i] = true (½ resté seul).
+    function stepsOf(prog) {
+        const steps = [], chips = [], pairPos = [], lone = [];
+        const base = (it) => ({ rootIndex: it.r, chordId: it.id, scaleId: scaleOfChord(it.id, it.s) });
+        for (let i = 0; i < prog.length; i++) {
+            const it = prog[i], nx = prog[i + 1];
+            if (it.m === 0.5 && nx && nx.m === 0.5) {
+                const st = base(it); st.measures = 1;
+                const b2 = base(nx); st.split = { rootIndex: b2.rootIndex, chordId: b2.chordId, scaleId: b2.scaleId };
+                steps.push(st); chips.push([i, i + 1]);
+                pairPos[i] = 'a'; pairPos[i + 1] = 'b';
+                i++;
+            } else {
+                const st = base(it); st.measures = it.m === 0.5 ? 1 : it.m;
+                steps.push(st); chips.push([i]);
+                if (it.m === 0.5) lone[i] = true;
+            }
+        }
+        return { steps, chips, pairPos, lone };
+    }
+    let STEPS = stepsOf([]);   // pas actuellement donnés à l'orchestre (mis à jour par syncBandGrid)
+
+    // ---- Historique annuler / rétablir (la progression : accords, ordre, durées) ----
+    // H.last = état courant sérialisé ; H.undo / H.redo = états précédents / suivants. Changer seulement
+    // la sélection d'un accord n'est pas une modification. Limite de 100 étapes, comme dans Chord scales.
+    const H = { undo: [], redo: [], last: '[]', limit: 100 };
+    const progState = () => JSON.stringify(R.prog);
+    function histReset() { H.undo = []; H.redo = []; H.last = progState(); updateUndoButtons(); }
+    function histRecord() {
+        const now = progState();
+        if (now === H.last) return;
+        H.undo.push(H.last);
+        if (H.undo.length > H.limit) H.undo.shift();
+        H.redo = [];
+        H.last = now;
+    }
+    function histStep(from, to) {
+        if (!from.length) return;
+        to.push(H.last);
+        if (to.length > H.limit) to.shift();
+        const target = from.pop();
+        const before = R.prog;
+        R.prog = JSON.parse(target);
+        H.last = target;
+        // on sélectionne le premier accord touché par le changement
+        let i = 0;
+        while (i < before.length && i < R.prog.length && JSON.stringify(before[i]) === JSON.stringify(R.prog[i])) i++;
+        R.progSel = R.prog.length ? Math.min(i, R.prog.length - 1) : null;
+        progRefresh();
+    }
+    function undo() { histStep(H.undo, H.redo); }
+    function redo() { histStep(H.redo, H.undo); }
+    function updateUndoButtons() {
+        const u = $('bUndo'), r = $('bRedo');
+        if (u) u.disabled = !H.undo.length;
+        if (r) r.disabled = !H.redo.length;
     }
 
     function chipClass(it) { return isMinorish(it.id) ? 'min' : 'maj'; }
     function renderChips() {
         const box = $('chips');
+        const keepScroll = box.scrollTop;   // la zone défile au-delà de deux rangées : on garde la position au rafraîchissement
         box.textContent = '';
         if (!R.prog.length) {
             const e = document.createElement('div');
             e.className = 'empty';
-            e.textContent = 'Touchez un triangle puis « Ajouter l\'accord », ou activez « Saisie par touches ».';
+            e.textContent = 'Touchez un triangle puis « Ajouter », ou activez « Saisie ».';
             box.appendChild(e);
         }
+        const sp = stepsOf(R.prog);
+        let pairBox = null;   // deux accords ½ = une mesure : ils sont regroupés et collés l'un à l'autre
         R.prog.forEach((it, i) => {
             const b = document.createElement('button');
             b.type = 'button';
-            b.className = 'chip ' + chipClass(it) + (i === R.progSel ? ' sel' : '') + (i === R.playing ? ' playing' : '');
+            b.className = 'chip ' + chipClass(it) + (i === R.progSel ? ' sel' : '') + (i === R.playing ? ' playing' : '') + (sp.lone[i] ? ' lone' : '');
+            if (sp.lone[i]) b.title = 'Demi-mesure seule : elle sonne comme une mesure entière. Faites suivre cet accord d\'un autre accord de ½ pour partager la mesure.';
             b.dataset.i = i;
-            const m = document.createElement('span'); m.className = 'm'; m.textContent = it.m > 1 ? '×' + it.m : '';
+            const m = document.createElement('span'); m.className = 'm'; m.textContent = it.m === 0.5 ? '½' : (it.m > 1 ? '×' + it.m : '');
             const n = document.createElement('span'); n.className = 'n'; n.textContent = chordName(it.r, it.id);
             const r = document.createElement('span'); r.className = 'r'; r.textContent = S.analysis ? romanOf(it.r, it.id) : '';
             b.append(m, n, r);
-            box.appendChild(b);
+            if (sp.pairPos[i] === 'a') { pairBox = document.createElement('div'); pairBox.className = 'pair'; box.appendChild(pairBox); }
+            (pairBox && sp.pairPos[i] ? pairBox : box).appendChild(b);
+            if (sp.pairPos[i] === 'b') pairBox = null;
         });
-        $('chipTools').hidden = R.progSel === null || !R.prog[R.progSel];
-        const dur = R.progSel !== null && R.prog[R.progSel] ? R.prog[R.progSel].m : 1;
-        $('durSeg').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(parseInt(b.dataset.m, 10) === dur)));
-        const total = R.prog.reduce((s, it) => s + it.m, 0);
-        $('progSum').textContent = R.prog.length ? `${R.prog.length} accord${R.prog.length > 1 ? 's' : ''} · ${total} mesure${total > 1 ? 's' : ''}` : '';
+        // Défilement : position conservée, puis l'accord en lecture (sinon l'accord sélectionné) est ramené dans la zone visible
+        box.scrollTop = keepScroll;
+        const act = box.querySelector('.chip.playing') || box.querySelector('.chip.sel');
+        if (act) {
+            const a = act.getBoundingClientRect(), v = box.getBoundingClientRect();
+            if (a.top < v.top) box.scrollTop -= (v.top - a.top) + 8;
+            else if (a.bottom > v.bottom) box.scrollTop += (a.bottom - v.bottom) + 8;
+        }
+        // La rangée d'outils reste visible tant que la progression n'est pas vide (« Tout effacer » doit rester accessible) ;
+        // les outils qui agissent sur l'accord sélectionné sont grisés quand aucun accord n'est sélectionné.
+        const hasSel = R.progSel !== null && !!R.prog[R.progSel];
+        $('chipTools').hidden = !R.prog.length;
+        ['bLeft', 'bRight', 'bDup', 'bDel'].forEach((id) => { $(id).disabled = !hasSel; });
+        const dur = hasSel ? R.prog[R.progSel].m : 1;
+        $('durSeg').querySelectorAll('button').forEach((b) => {
+            b.disabled = !hasSel;
+            b.setAttribute('aria-pressed', String(hasSel && parseFloat(b.dataset.m) === dur));
+        });
     }
     function selectItem(i) {
         const it = R.prog[i];
@@ -835,14 +1293,30 @@
             R.progSel = i + 1; progChanged();
         });
         $('bDel').addEventListener('click', removeSelected);
+        $('bUndo').addEventListener('click', undo);
+        $('bRedo').addEventListener('click', redo);
+        // ⌘Z / Ctrl+Z annule, ⌘⇧Z / Ctrl+Maj+Z / Ctrl+Y rétablit — sauf dans un champ de texte (qui garde son propre historique)
+        document.addEventListener('keydown', (e) => {
+            if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+            const k = (e.key || '').toLowerCase();
+            const isUndo = k === 'z' && !e.shiftKey;
+            const isRedo = (k === 'z' && e.shiftKey) || (k === 'y' && e.ctrlKey && !e.metaKey);
+            if (!isUndo && !isRedo) return;
+            const t = e.target;
+            const nonText = ['range', 'checkbox', 'radio', 'button', 'file'];
+            if (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !nonText.includes(t.type)))) return;
+            e.preventDefault();
+            if (isUndo) undo(); else redo();
+        });
         $('bClear').addEventListener('click', () => {
             if (band && band.isPlaying) band.stop();
             R.prog = []; R.progSel = null; progChanged();
         });
         const seg = $('durSeg');
-        [1, 2, 3, 4, 8].forEach((m) => {
+        [0.5, 1, 2, 3, 4, 8].forEach((m) => {
             const b = document.createElement('button');
-            b.type = 'button'; b.className = 'btn small'; b.dataset.m = m; b.textContent = m;
+            b.type = 'button'; b.className = 'btn small'; b.dataset.m = m; b.textContent = m === 0.5 ? '½' : m;
+            if (m === 0.5) b.title = 'Demi-mesure : deux accords de ½ à la suite se partagent une mesure';
             b.addEventListener('click', () => {
                 if (R.progSel === null || !R.prog[R.progSel]) return;
                 R.prog[R.progSel].m = m; progChanged();
@@ -866,17 +1340,25 @@
     // ------------------------------------------------------------------------------------------------------------------
     // Enregistrement, export, import
     // ------------------------------------------------------------------------------------------------------------------
+    // Gamme d'un accord : celle de la grille importée, sinon sa gamme principale du catalogue
+    function scaleOfChord(id, s) {
+        if (s) return s;
+        const o = lookupChord(id);
+        return (o && o.scales && o.scales[0]) ? o.scales[0].id : 'ionian';
+    }
     function snapshot(name) {
         return {
             tonnetz: 1, name,
-            items: R.prog.map((it) => { const o = { r: it.r, id: it.id, m: it.m }; if (it.tri) o.tri = it.tri; return o; }),
+            items: R.prog.map((it) => { const o = { r: it.r, id: it.id, m: it.m }; if (it.tri) o.tri = it.tri; if (it.s) o.s = it.s; return o; }),
             bpm: S.bpm, style: S.style, meter: S.meter, tonic: S.tonic, mode: S.mode
         };
     }
     function validItems(items) {
         if (!Array.isArray(items)) return [];
+        // durée en mesures : entier de 1 à 16, ou 0,5 (demi-mesure partagée avec l'accord voisin)
+        const dur = (v) => (parseFloat(v) === 0.5 ? 0.5 : Math.max(1, Math.min(16, parseInt(v, 10) || 1)));
         return items.filter((o) => o && Number.isInteger(o.r) && o.r >= 0 && o.r < 12 && typeof o.id === 'string' && lookupChord(o.id))
-            .map((o) => { const it = { r: o.r, id: o.id, m: Math.max(1, Math.min(16, parseInt(o.m, 10) || 1)) }; if (typeof o.tri === 'string') it.tri = o.tri; return it; });
+            .map((o) => { const it = { r: o.r, id: o.id, m: dur(o.m) }; if (typeof o.tri === 'string') it.tri = o.tri; if (typeof o.s === 'string') it.s = o.s; return it; });
     }
     const STYLES = ['classic', 'swing', 'pop', 'latin', 'cuba', 'brass', 'balkan', 'piazzolla', 'milongalyrique'];
     const METERS = ['4/4', '3/4', '2/4', '6/8', '9/8', '12/8'];
@@ -889,6 +1371,8 @@
         if (METERS.includes(o.meter)) S.meter = o.meter;
         if (Number.isInteger(o.tonic) && o.tonic >= 0 && o.tonic < 12) S.tonic = o.tonic;
         if (o.mode === 'maj' || o.mode === 'min') S.mode = o.mode;
+        if (o.vols) ['piano', 'bass', 'drums'].forEach((k) => { if (Number.isFinite(o.vols[k])) S.vols[k] = Math.max(0, Math.min(100, Math.round(o.vols[k]))); });
+        if (Number.isFinite(o.reverb)) S.reverb = Math.max(0, Math.min(100, Math.round(o.reverb)));
         saveSettings();
         syncControls();
         applyBandSettings();
@@ -921,6 +1405,86 @@
             box.appendChild(row);
         });
     }
+    function downloadJson(obj, filename) {
+        const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+    // Grille au format de la Jam de Chord Scales (« chord-scales-jam-grid ») : tonalité, qualité, tempo, mesure, orchestration (volumes de 0 à 1)
+    // et une case par accord { rootIndex, chordId, measures, scaleId }.
+    function chordScalesGrid(name) {
+        const keyName = NAMES.en[useFlats() ? 'f' : 's'][S.tonic].replace('♭', 'b').replace('♯', '#');
+        return {
+            format: 'chord-scales-jam-grid', version: 1, name,
+            keyName, key: S.tonic, quality: S.mode === 'min' ? 'aeolian' : 'ionian', spell: useFlats() ? 'ffsff' : 'sfsff',
+            bpm: S.bpm, timeSignature: S.meter,
+            orchestration: {
+                mode: S.style === 'classic' ? 'arpeges' : 'orchestra', style: S.style,
+                volumes: { piano: S.vols.piano / 100, bass: S.vols.bass / 100, drums: S.vols.drums / 100, bandoneon: 0.7, violin: 0.6, guitar: 0.5 },
+                reverb: S.reverb / 100
+            },
+            grid: stepsOf(R.prog).steps   // deux accords ½ → une mesure avec « split », comme dans Chord scales
+        };
+    }
+    // Grille Chord Scales → progression Gym Tonnetz. Adaptations : reprises (|: :| et 1re / 2e fin) déroulées ; mesure partagée entre deux
+    // accords → deux accords d'une mesure ; basses d'accord, parties, fonctions et modulations ignorées ; qualité modale → majeur ou mineur.
+    const MAJOR_QUALITIES = ['ionian', 'lydian', 'mixolydian'];
+    function unrollRepeats(grid) {
+        const out = [];
+        let i = 0, unrolled = false;
+        while (i < grid.length) {
+            let re = -1;
+            for (let k = i; k < grid.length; k++) if (grid[k] && grid[k].repeatEnd) { re = k; break; }
+            if (re < 0) { out.push(...grid.slice(i)); break; }
+            let rs = i;
+            for (let k = i; k <= re; k++) if (grid[k] && grid[k].repeatStart) rs = k;
+            let v1 = -1;
+            for (let k = rs; k <= re; k++) if (grid[k] && grid[k].volta === 1) { v1 = k; break; }
+            const n = Math.max(2, Math.min(8, parseInt(grid[re].repeatEnd, 10) || 2));
+            out.push(...grid.slice(i, rs));
+            for (let pass = 1; pass <= n; pass++) {
+                out.push(...grid.slice(rs, v1 < 0 ? re + 1 : v1));
+                if (v1 >= 0 && pass < n) out.push(...grid.slice(v1, re + 1));
+            }
+            unrolled = true;
+            i = re + 1;
+        }
+        return { seq: out, unrolled };
+    }
+    function fromChordScales(o) {
+        const { seq, unrolled } = unrollRepeats(o.grid);
+        const items = [];
+        let splits = false;
+        seq.forEach((g) => {
+            if (!g) return;
+            if (g.split && (g.measures || 1) === 1) {   // mesure partagée entre deux accords → deux accords de ½ mesure
+                splits = true;
+                items.push({ r: g.rootIndex, id: g.chordId, m: 0.5, s: g.scaleId });
+                items.push({ r: g.split.rootIndex, id: g.split.chordId, m: 0.5, s: g.split.scaleId });
+                return;
+            }
+            items.push({ r: g.rootIndex, id: g.chordId, m: g.measures || 1, s: g.scaleId });
+            if (g.split) { splits = true; items.push({ r: g.split.rootIndex, id: g.split.chordId, m: 1, s: g.split.scaleId }); }
+        });
+        const orch = o.orchestration || {}, vol = orch.volumes || {};
+        const pct = (x) => (Number.isFinite(x) ? (x <= 1 ? x * 100 : x) : undefined);
+        const notes = [];
+        if (unrolled) notes.push('reprises déroulées');
+        if (splits) notes.push('demi-mesures en deux accords');
+        return {
+            snap: {
+                name: o.name, items, bpm: o.bpm, meter: o.timeSignature,
+                tonic: Number.isInteger(o.key) ? o.key : undefined,
+                mode: o.quality ? (MAJOR_QUALITIES.includes(o.quality) ? 'maj' : 'min') : undefined,
+                style: orch.mode === 'arpeges' ? 'classic' : orch.style,
+                vols: { piano: pct(vol.piano), bass: pct(vol.bass), drums: pct(vol.drums) }, reverb: pct(orch.reverb)
+            },
+            notes
+        };
+    }
     function initSaves() {
         $('bSave').addEventListener('click', () => {
             if (!R.prog.length) { setStatus('Rien à enregistrer : la progression est vide.'); return; }
@@ -934,15 +1498,21 @@
             renderSaves();
             setStatus('« ' + name + ' » enregistrée.');
         });
-        $('bExport').addEventListener('click', () => {
+        // Export : un menu propose le fichier Tonnetz ou une grille au format de la Jam de Chord Scales
+        const menu = $('exportMenu'), bExp = $('bExport');
+        const showMenu = (on) => { menu.hidden = !on; bExp.setAttribute('aria-expanded', String(on)); };
+        bExp.addEventListener('click', (e) => { e.stopPropagation(); showMenu(menu.hidden); });
+        document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) showMenu(false); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') showMenu(false); });
+        menu.addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-fmt]');
+            if (!b) return;
+            showMenu(false);
             if (!R.prog.length) { setStatus('Rien à exporter : la progression est vide.'); return; }
             const name = $('saveName').value.trim() || 'progression';
-            const blob = new Blob([JSON.stringify(snapshot(name), null, 2)], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = name.replace(/[^\w\-]+/g, '_') + '.tonnetz.json';
-            document.body.appendChild(a); a.click(); a.remove();
-            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+            const cs = b.dataset.fmt === 'chordscales';
+            downloadJson(cs ? chordScalesGrid(name) : snapshot(name), name.replace(/[^\w\-]+/g, '_') + (cs ? '.grille.json' : '.tonnetz.json'));
+            setStatus(cs ? 'Grille Chord Scales exportée.' : 'Fichier Tonnetz exporté.');
         });
         $('bImport').addEventListener('click', () => $('fileImport').click());
         $('fileImport').addEventListener('change', (e) => {
@@ -951,12 +1521,16 @@
             const rd = new FileReader();
             rd.onload = () => {
                 try {
-                    const o = JSON.parse(rd.result);
+                    let o = JSON.parse(rd.result), adapted = [];
+                    if (o && o.format === 'chord-scales-jam-grid' && Array.isArray(o.grid)) {      // grille de la Jam de Chord Scales
+                        const c = fromChordScales(o);
+                        o = c.snap; adapted = c.notes;
+                    }
                     if (!o || !Array.isArray(o.items) || !validItems(o.items).length) throw new Error('vide');
                     $('saveName').value = o.name || '';
                     loadSnapshot(o);
-                    setStatus('Progression importée.');
-                } catch (err) { setStatus('Ce fichier n\'est pas une progression Gym Tonnetz valide.'); }
+                    setStatus('Progression importée' + (adapted.length ? ' (' + adapted.join(', ') + ')' : '') + '.');
+                } catch (err) { setStatus('Ce fichier n\'est ni une progression Gym Tonnetz ni une grille Chord Scales valide.'); }
             };
             rd.readAsText(f);
             e.target.value = '';
@@ -998,8 +1572,9 @@
         updateMixerLabels();
     }
     function syncBandGrid() {
+        STEPS = stepsOf(R.prog);
         if (!band) return;
-        band.grid = R.prog.map((it) => ({ rootIndex: it.r, chordId: it.id, measures: it.m }));
+        band.grid = STEPS.steps;
         if (band.currentStepIndex >= band.grid.length) { band.currentStepIndex = 0; band.currentBeat = 0; }
     }
 
@@ -1029,15 +1604,19 @@
         if (band && band.isPlaying) loadTimer = setInterval(check, 400);
     }
     function onBeat(ev) {
-        const changed = R.playing !== ev.stepIdx;
-        R.playing = ev.stepIdx;
+        // ev.stepIdx est un pas de l'orchestre : une mesure à deux accords (deux ½) = un pas ; on retrouve l'accord qui sonne
+        const ch = STEPS.chips[ev.stepIdx] || [];
+        const half = ch.length > 1 && (ev.beat % ev.bpb) >= band.getSplitBeat() ? 1 : 0;
+        const pi = ch.length ? ch[half] : ev.stepIdx;
+        const changed = R.playing !== pi;
+        R.playing = pi;
         const bars = Math.round(ev.total / ev.bpb);
         $('counter').textContent = `Mesure ${ev.measure + 1}/${bars}`;
         if (changed) {
             renderChips();
             paint();
             renderInfo();
-            ensureVisible(R.inst[ev.stepIdx]);       // le réseau suit l'accord joué s'il sort de l'écran
+            ensureVisible(R.inst[pi]);       // le réseau suit l'accord joué s'il sort de l'écran
             const chip = $('chips').querySelector('.chip.playing');
             if (chip && chip.scrollIntoView) { try { chip.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
         }
@@ -1158,8 +1737,7 @@
             b.setAttribute('aria-pressed', String(st.ext.includes(b.dataset.k)));
         });
         const lc = lookupChord(id);
-        $('cuPreview').innerHTML = `<div class="title">${esc(chordName(CU.root, id))}</div>
-            <div class="notes">${esc(chordPcs(CU.root, id).map(nm).join(' – '))}</div>
+        $('cuPreview').innerHTML = `${chordHead(CU.root, id)}
             <div class="hint">${esc(cbFullName(st))}${lc ? '' : ''}</div>`;
         $('cuSum').textContent = chordName(CU.root, id);
         const box = $('cuList');
@@ -1196,7 +1774,6 @@
         $('bLabels').setAttribute('aria-pressed', String(S.labels));
         $('bSound').setAttribute('aria-pressed', String(S.sound));
         $('bAnalysis').setAttribute('aria-pressed', String(S.analysis));
-        $('bDim').setAttribute('aria-pressed', String(S.dim));
         $('bEntry').setAttribute('aria-pressed', String(S.entry));
         $('bLoop').setAttribute('aria-pressed', String(S.loop));
         const playing = !!(band && band.isPlaying);
@@ -1209,6 +1786,10 @@
         $('rBpm').value = S.bpm;
         $('bpmVal').textContent = S.bpm + ' bpm';
         document.querySelectorAll('#pAnalysis [data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === S.mode)));
+        ['piano', 'bass', 'drums', 'reverb', 'master'].forEach((k) => {
+            const r = $('mix-' + k);
+            if (r) { r.value = (k in S.vols) ? S.vols[k] : S[k]; if (r.nextSibling) r.nextSibling.textContent = r.value; }
+        });
         syncButtons();
         updateMixerLabels();
     }
@@ -1227,7 +1808,6 @@
         $('bLabels').addEventListener('click', () => { S.labels = !S.labels; saveSettings(); refreshAll(); });
         $('bSound').addEventListener('click', () => { S.sound = !S.sound; if (!S.sound) stopTap(); saveSettings(); syncButtons(); });
         $('bAnalysis').addEventListener('click', () => { S.analysis = !S.analysis; saveSettings(); refreshAll(); });
-        $('bDim').addEventListener('click', () => { S.dim = !S.dim; saveSettings(); refreshAll(); });
         const keys = $('tonicKeys');
         for (let pc = 0; pc < 12; pc++) {
             const b = document.createElement('button');
@@ -1238,15 +1818,23 @@
         document.querySelectorAll('#pAnalysis [data-mode]').forEach((b) => {
             b.addEventListener('click', () => { S.mode = b.dataset.mode; saveSettings(); refreshAll(); });
         });
+        $('cuPreview').addEventListener('click', (e) => { const b = e.target.closest('button[data-act]'); if (b) onHeadClick(b); });
         $('info').addEventListener('click', (e) => {
             const b = e.target.closest('button[data-act]');
             if (!b) return;
-            if (b.dataset.act === 'add') addCurrent();
-            else if (b.dataset.act === 'nb') { R.progSel = null; selectTri(b.dataset.key); renderChips(); ensureVisible(triByKey(b.dataset.key)); if (S.entry) addCurrent(); }
+            if (onHeadClick(b)) return;
+            if (b.dataset.act === 'nb') { R.progSel = S.entry ? null : progIndexFor(b.dataset.key); selectTri(b.dataset.key); renderChips(); ensureVisible(triByKey(b.dataset.key)); if (S.entry) addCurrent(); }
         });
         document.addEventListener('keydown', (e) => {
             const tag = (e.target && e.target.tagName) || '';
             if (/INPUT|SELECT|TEXTAREA/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
+            // ← / → : quand un accord de la progression est sélectionné, passent à l'accord précédent / suivant (sans boucler)
+            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && R.progSel !== null && R.prog[R.progSel] && !(e.target.closest && e.target.closest('#colorPop'))) {
+                e.preventDefault();
+                const j = R.progSel + (e.key === 'ArrowLeft' ? -1 : 1);
+                if (j >= 0 && j < R.prog.length) selectItem(j);
+                return;
+            }
             if (e.key === ' ' && tag !== 'BUTTON') { e.preventDefault(); togglePlay(); }
             else if ((e.key === 'Delete' || e.key === 'Backspace') && R.progSel !== null && tag !== 'BUTTON') { e.preventDefault(); removeSelected(); }
             else if (e.key === '+' || e.key === '=') $('bZoomIn').click();
@@ -1257,6 +1845,7 @@
 
     function refreshSelection() { paint(); renderInfo(); renderChips(); }
     function refreshAll() {
+        drawPath();          // les flèches contournent les inscriptions : elles suivent noms, chiffrage et orthographe
         syncButtons();
         renderAnalysisUi();
         renderCustomUi();
@@ -1281,6 +1870,7 @@
 
     const work = store.get('tonnetz.work', null);
     if (work && Array.isArray(work.items)) R.prog = validItems(work.items);
+    histReset();   // l'historique annuler / rétablir part de la progression retrouvée au démarrage
     computeInstances();
     { const first = R.inst.find(Boolean); if (first && boardW) centerOn(first.cx, first.cy, baseZoom(), false); }   // la vue démarre sur la progression gardée
     drawPath();

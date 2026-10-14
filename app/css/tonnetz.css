@@ -48,6 +48,8 @@
   --play-ink: #ffffff;
   --hl: #111827;
   --path: #111827;
+  --arrow: #ffffff;        /* flèches de la progression : couleur et contour */
+  --arrow-edge: #111827;
   --node: #ffffff;
   --node-ink: #111827;
   --node-edge: #71717a;
@@ -80,11 +82,19 @@ body {
   position: relative; z-index: 20; user-select: none; -webkit-user-select: none;
 }
 .top h1 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: .01em; }
-.top .sub { color: var(--muted); font-size: .78rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.themebox { position: relative; }
-.themebox .btn { display: inline-flex; align-items: center; gap: 7px; }
-.themebox .btn.on { background: var(--on); border-color: var(--on); color: var(--on-fg); }
-@media (max-width: 520px) { .themebox .lbl { display: none; } }
+/* bouton du chiffrage romain : activé, chiffres rouges sur fond blanc */
+#bAnalysis[aria-pressed="true"] { background: #fff; border-color: #fff; color: var(--roman); }
+#bAnalysis[aria-pressed="true"]:hover { background: #e2e8f0; }
+
+/* menu d'export */
+.menuwrap { position: relative; display: inline-block; }
+.menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 30; display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--card); border: 1px solid var(--btn-line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+.menu .btn { text-align: left; }
+
+/* bouton Couleurs : en bas à droite du réseau, dans la barre de progression */
+#bTheme { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+@media (max-width: 520px) { #bTheme .lbl { display: none; } }
 /* ---------- mise en page : réglages à gauche, réseau à droite ---------- */
 .banner { margin: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 .layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -187,17 +197,22 @@ svg#board.dragging { cursor: grabbing; }
 .btn.fs-exit { display: none; position: absolute; top: 12px; right: 12px; z-index: 5; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 
 /* triangles : des tuiles séparées par un filet de la couleur du fond */
-.tri { stroke: var(--gbg); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .15s; }
+.tri { stroke: var(--gbg); stroke-width: calc(var(--w-grid, 2) * 1px); vector-effect: non-scaling-stroke; cursor: pointer; transition: fill .15s; }
 .tri.maj { fill: var(--maj); }
 .tri.min { fill: var(--min); }
 .tri.maj.out { fill: var(--maj-out); }
 .tri.min.out { fill: var(--min-out); }
-.tri.twin { stroke: var(--hl); stroke-width: 2.5; stroke-dasharray: 7 4; }     /* le même accord, ailleurs dans le réseau */
-.tri.near { stroke: var(--hl); stroke-width: 3; }                              /* triades contenues dans l'accord / contenant la note */
-.tri.inprog { stroke: var(--path); stroke-width: 4; }                          /* accords de la progression */
 .tri.nb { fill: var(--nb); }
-.tri.sel { fill: var(--sel); stroke: var(--hl); stroke-width: 4; }
-.tri.play { fill: var(--play); stroke: var(--hl); stroke-width: 5; }
+.tri.sel { fill: var(--sel); }
+.tri.play { fill: var(--play); }
+
+/* contours : couche à part, au-dessus des cases et du chemin, pour qu'ils restent complets (rien ne les recouvre) */
+#hlLayer polygon { fill: none; pointer-events: none; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+#hlLayer .twin { stroke: var(--hl); stroke-width: calc(var(--w-hl, 4) * .625px); stroke-dasharray: 7 4; }     /* le même accord, ailleurs dans le réseau */
+#hlLayer .near { stroke: var(--hl); stroke-width: calc(var(--w-hl, 4) * .75px); }                              /* triades contenues dans l'accord / contenant la note */
+#hlLayer .inprog { stroke: var(--path); stroke-width: calc(var(--w-path, 4) * 1px); stroke-dasharray: none; }  /* accords de la progression */
+#hlLayer .sel { stroke: var(--hl); stroke-width: calc(var(--w-hl, 4) * 1px); stroke-dasharray: none; }
+#hlLayer .play { stroke: var(--hl); stroke-width: calc(var(--w-hl, 4) * 1.25px); stroke-dasharray: none; }
 
 .tname { font-family: var(--font-chord); font-size: 21px; font-weight: 700; text-anchor: middle; pointer-events: none;
          stroke-width: .7px; stroke-linejoin: round; paint-order: stroke; }   /* léger trait de la couleur du texte : gras garanti, même si Kalam Bold manque */
@@ -215,53 +230,76 @@ svg#board.lod1 .troman, svg#board.lod1 .tpill, svg#board.lod1 .ttag { display: n
 svg#board.lod2 .tname { display: none; }
 
 .node { cursor: pointer; }
-.node circle { fill: var(--node); stroke: var(--node-edge); stroke-width: 1.5; vector-effect: non-scaling-stroke; transition: fill .15s; }
+.node circle { fill: var(--node); stroke: var(--node-edge); stroke-width: calc(var(--w-node, 1.5) * 1px); vector-effect: non-scaling-stroke; transition: fill .15s; }
 .node text { font-size: 17px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--node-ink); pointer-events: none; }
 .node.on circle { fill: var(--node-on); stroke: var(--gbg); stroke-width: 2; }
 .node.on text { fill: var(--node-on-ink); }
 .node.root circle { stroke: var(--play); stroke-width: 4; }
 
-#pathLayer path { fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-#pathLayer path.halo { stroke: var(--gbg); stroke-width: 10; opacity: .85; }
-#pathLayer path.seg { stroke: var(--path); stroke-width: 4; }
-#pathLayer circle.stepdot { fill: var(--path); stroke: var(--gbg); stroke-width: 2; pointer-events: none; }
-#pathLayer text { font-size: 14px; font-weight: 800; fill: var(--gbg); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+/* flèches de la progression : une seule forme pleine (corps + pointe), dessinée au-dessus de tout, avec son contour */
+#arrowLayer * { pointer-events: none; }
+#arrowLayer path.arrow { fill: var(--arrow); stroke: var(--arrow-edge); stroke-width: calc(var(--w-arrow, 2) * 1px); stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+#arrowLayer circle.stepdot { fill: var(--arrow); stroke: var(--arrow-edge); stroke-width: calc(var(--w-arrow, 2) * 1px); vector-effect: non-scaling-stroke; }
+#arrowLayer text { font-size: 14px; font-weight: 800; fill: var(--arrow-edge); text-anchor: middle; dominant-baseline: central; }
 
 /* ---------- panneau d'information (colonne de gauche) ---------- */
-.info { display: flex; flex-direction: column; gap: 8px; min-height: 96px; }
-.info .title { font-family: var(--font-chord); font-size: 1.6rem; font-weight: 700; line-height: 1.15; }
-.info .title .hint { font-family: var(--font); font-size: .78rem; font-weight: 400; }
-.info .notes { color: var(--muted); font-size: .9rem; }
-.info .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.tag {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; font-size: .78rem;
-  background: var(--board); border: 1px solid var(--line);
+.info { display: flex; flex-direction: column; gap: 10px; min-height: 84px; }
+/* nom de l'accord et notes, comme dans Chord Scales : le nom en gros caractères blancs gras, puis une pastille bleue par note ;
+   cliquables (le nom joue l'accord en arpège, une note se joue seule) */
+.chordhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.cname {
+  font-family: var(--font); font-weight: 800; font-size: 2.3rem; line-height: 1; letter-spacing: -.01em; color: #fff;
+  background: transparent; border: 0; padding: 2px 4px; margin-left: -4px; border-radius: 8px; cursor: pointer; touch-action: manipulation;
 }
-.tag b { color: var(--roman); font-family: var(--font-chord); font-weight: 400; font-size: 1.05rem; }
-#cuPreview.info .title { font-size: 1.35rem; }
+.cnotes { display: flex; flex-wrap: wrap; gap: 8px; }
+.cnote {
+  font-family: var(--font); font-weight: 800; font-size: 1.3rem; line-height: 1; color: #fff; background: #3461e1;
+  border: 0; border-radius: 8px; min-width: 48px; height: 40px; padding: 0 10px; cursor: pointer; touch-action: manipulation;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.cname:hover { background: var(--btn-hover); }
+.cnote:hover { background: #4a73ea; }
+.cname:active, .cnote:active { background: #2549b8; }
+.cname:focus-visible, .cnote:focus-visible { outline: 2px solid #93b4ff; outline-offset: 2px; }
+/* les trois transformations : une seule ligne, sous le nom de l'accord */
+.trans { display: flex; flex-wrap: nowrap; gap: 6px; }
+.trans .btn { flex: 1 1 0; min-width: 0; padding: 7px 4px; overflow: hidden; text-overflow: ellipsis; }
+.trans .btn b { color: var(--muted); font-weight: 800; }
 
 /* ---------- progression (sous le réseau) ---------- */
 .progbar {
-  flex: none; display: flex; flex-direction: column; gap: 8px; max-height: 42%; overflow-y: auto;
+  flex: none; display: flex; flex-direction: column; gap: 8px; max-height: 56%; overflow-y: auto;
   padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line);
   scrollbar-width: thin; scrollbar-color: #4a4a4c transparent;
 }
+.progbar > * { flex: none; }          /* aucun bloc de la barre ne s'écrase : la zone d'accords défile, elle ne déborde pas sur les boutons */
 .prog-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.prog-head .sum-note { margin-left: auto; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; min-height: 52px; padding: 8px; border-radius: 10px; background: var(--board); border: 1px solid var(--line); align-content: flex-start; }
+/* Zone d'accords : au plus DEUX rangées visibles (hauteur d'un accord × 2 + espace + marges), le reste défile dans la zone */
+.progbar { --chip-h: 62px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; min-height: 80px; max-height: calc(var(--chip-h) * 2 + 8px + 18px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 8px; border-radius: 10px; background: var(--board); border: 1px solid var(--line); align-content: flex-start;
+  scrollbar-width: thin; scrollbar-color: #4a4a4c transparent; }
 .chip {
-  position: relative; min-width: 72px; padding: 6px 12px 5px; border-radius: 8px; border: 2px solid transparent; cursor: pointer;
+  position: relative; min-width: 72px; min-height: 62px; padding: 6px 12px 5px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px; border: 2px solid transparent; cursor: pointer;
   background: var(--card); text-align: center; font: inherit; color: var(--fg); touch-action: manipulation;
 }
 .chip.maj { background: var(--maj); color: var(--maj-ink); }
 .chip.min { background: var(--min); color: var(--min-ink); }
 .chip .n { display: block; font-family: var(--font-chord); font-weight: 700; font-size: 1.35rem; line-height: 1.15; }
-.chip .r { display: inline-block; margin-top: 3px; padding: 0 9px; border-radius: 999px; background: var(--pill); color: var(--roman);
+.chip .r { display: block; margin-top: 3px; padding: 0 9px; border-radius: 999px; background: var(--pill); color: var(--roman);
   font-family: var(--font-chord); font-size: .95rem; font-weight: 400; line-height: 1.25; }
-.chip .r:empty { display: none; }
+.chip .r:empty { display: none; }          /* chiffrage masqué : le nom reste centré, la hauteur de la pastille est fixe (min-height) */
 .chip .m { position: absolute; top: 2px; right: 6px; font-size: .65rem; font-weight: 800; opacity: .8; }
 .chip.sel { border-color: #ffffff; box-shadow: 0 0 0 1px #000; }
 .chip.playing { border-color: var(--play); box-shadow: 0 0 0 2px var(--play); }
+.chip.lone { border-style: dashed; border-color: var(--muted); }                 /* ½ resté seul : joué comme une mesure entière */
+.chip.sel.lone { border-color: #ffffff; }
+.chip.playing.lone { border-color: var(--play); }
+.pair { display: flex; gap: 2px; }                                                      /* deux accords ½ = une mesure */
+.pair .chip { min-width: 60px; }
+.pair .chip:first-child { border-radius: 8px 0 0 8px; }
+.pair .chip:last-child { border-radius: 0 8px 8px 0; }
 .chips .empty { color: var(--muted); font-size: .85rem; padding: 8px 4px; }
 
 .counter { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; min-width: 90px; }
@@ -289,10 +327,10 @@ svg#board.lod2 .tname { display: none; }
 body.fs-lock { overflow: hidden; }
 .stage.is-fs .progbar { max-height: 38%; }
 .stage.is-fs .chip .n { font-size: 1.6rem; }
-.stage.is-fs .chip { min-width: 88px; }
+.stage.is-fs .chip { min-width: 88px; min-height: 68px; }
+.stage.is-fs .progbar { --chip-h: 68px; }
 
 @media (max-width: 520px) {
-  .top .sub { display: none; }
   .side { padding: 10px; }
   .mixer { grid-template-columns: 76px 1fr 34px; }
   .toolbar { padding: 6px 8px; }
@@ -367,6 +405,10 @@ body.fs-lock { overflow: hidden; }
 .cp-sl-label { font-size: .74rem; color: var(--muted); }
 .cp-sl-val { font-size: .72rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg); }
 .cp-sep { height: 6px; }
+.cp-wrow { cursor: pointer; }
+.cp-wrange { flex: 1; min-width: 0; width: auto; background: var(--board); }
+.cp-wval { flex: 0 0 46px; }
+.cp-wreset { align-self: flex-start; margin-top: 4px; }
 .cp-range { -webkit-appearance: none; appearance: none; width: 100%; height: 14px; border-radius: 7px; margin: 0; border: 1px solid var(--btn-line); cursor: pointer; }
 .cp-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid #111; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
 .cp-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #111; }

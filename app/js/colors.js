@@ -1,6 +1,6 @@
 // colors.js — réglage des couleurs du réseau (Gym Tonnetz).
 // Un bouton de la barre du haut ouvre un popup déplaçable : on y choisit un thème proposé, ou on règle chaque couleur du réseau
-// (fonds, textes, états, notes, chiffrage romain) avec plusieurs outils : cercle chromatique + carré saturation / luminosité, curseurs
+// (fonds, textes, états, flèches de la progression, notes, chiffrage romain) avec plusieurs outils : cercle chromatique + carré saturation / luminosité, curseurs
 // teinte / saturation / luminosité et rouge / vert / bleu, code hexadécimal, pipette, sélecteur du système, nuances, couleurs récentes.
 // Les couleurs changent en direct sur le réseau (variables CSS posées sur <html>). On peut enregistrer son thème, l'exporter et
 // l'importer (.json). Tout est gardé dans le navigateur (clés tonnetz.colors, tonnetz.themes, tonnetz.colors.recent).
@@ -85,32 +85,32 @@
     // Logique commune des thèmes : dans la tonalité, majeur en teinte claire et mineur en teinte foncée ; hors tonalité, en gris ;
     // un accent par état (sélection, voisins P / L / R, accord joué) ; texte choisi pour un contraste d'au moins 4,5:1.
     const KEYS = ['gbg', 'maj', 'majInk', 'min', 'minInk', 'majOut', 'majOutInk', 'minOut', 'minOutInk', 'sel', 'selInk', 'nb', 'nbInk',
-        'play', 'playInk', 'hl', 'path', 'node', 'nodeInk', 'nodeEdge', 'nodeOn', 'nodeOnInk', 'pill', 'roman'];
+        'play', 'playInk', 'hl', 'path', 'arrow', 'arrowEdge', 'node', 'nodeInk', 'nodeEdge', 'nodeOn', 'nodeOnInk', 'pill', 'roman'];
 
     const PRESETS = [
         { id: 'jour', name: 'Jour', colors: { gbg: '#f4f4f5', maj: '#f59e0b', majInk: '#111827', min: '#1d4ed8', minInk: '#ffffff',
             majOut: '#d4d4d8', majOutInk: '#27272a', minOut: '#71717a', minOutInk: '#ffffff', sel: '#111827', selInk: '#ffffff',
-            nb: '#06b6d4', nbInk: '#0b1220', play: '#e11d48', playInk: '#ffffff', hl: '#111827', path: '#111827', node: '#ffffff',
+            nb: '#06b6d4', nbInk: '#0b1220', play: '#e11d48', playInk: '#ffffff', hl: '#111827', path: '#111827', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
             nodeInk: '#111827', nodeEdge: '#71717a', nodeOn: '#111827', nodeOnInk: '#ffffff', pill: '#18181b', roman: '#ef4444' } },
         { id: 'lagon', name: 'Lagon', colors: { gbg: '#f1f5f9', maj: '#06b6d4', majInk: '#0b1220', min: '#5b21b6', minInk: '#ffffff',
             majOut: '#cbd5e1', majOutInk: '#1e293b', minOut: '#64748b', minOutInk: '#ffffff', sel: '#0f172a', selInk: '#ffffff',
-            nb: '#facc15', nbInk: '#111827', play: '#e11d48', playInk: '#ffffff', hl: '#0f172a', path: '#0f172a', node: '#ffffff',
+            nb: '#facc15', nbInk: '#111827', play: '#e11d48', playInk: '#ffffff', hl: '#0f172a', path: '#0f172a', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
             nodeInk: '#0f172a', nodeEdge: '#64748b', nodeOn: '#0f172a', nodeOnInk: '#ffffff', pill: '#18181b', roman: '#ef4444' } },
         { id: 'prairie', name: 'Prairie', colors: { gbg: '#f4f4f5', maj: '#84cc16', majInk: '#111827', min: '#115e59', minInk: '#ffffff',
             majOut: '#d4d4d8', majOutInk: '#27272a', minOut: '#71717a', minOutInk: '#ffffff', sel: '#111827', selInk: '#ffffff',
-            nb: '#ec4899', nbInk: '#111827', play: '#f97316', playInk: '#111827', hl: '#111827', path: '#111827', node: '#ffffff',
+            nb: '#ec4899', nbInk: '#111827', play: '#f97316', playInk: '#111827', hl: '#111827', path: '#111827', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
             nodeInk: '#111827', nodeEdge: '#71717a', nodeOn: '#111827', nodeOnInk: '#ffffff', pill: '#18181b', roman: '#ef4444' } },
         { id: 'harmonia', name: 'Harmonia', colors: { gbg: '#121214', maj: '#fbbf24', majInk: '#111827', min: '#2563eb', minInk: '#ffffff',
             majOut: '#a1a1aa', majOutInk: '#111827', minOut: '#3f3f46', minOutInk: '#f4f4f5', sel: '#ffffff', selInk: '#111827',
-            nb: '#d946ef', nbInk: '#111827', play: '#10b981', playInk: '#052e16', hl: '#ffffff', path: '#ffffff', node: '#1f1f23',
+            nb: '#d946ef', nbInk: '#111827', play: '#10b981', playInk: '#052e16', hl: '#ffffff', path: '#ffffff', arrow: '#ffffff', arrowEdge: '#111827', node: '#1f1f23',
             nodeInk: '#f4f4f5', nodeEdge: '#71717a', nodeOn: '#ffffff', nodeOnInk: '#111827', pill: '#18181b', roman: '#ef4444' } },
         { id: 'aurore', name: 'Aurore', colors: { gbg: '#0b1020', maj: '#22d3ee', majInk: '#0b1220', min: '#7c3aed', minInk: '#ffffff',
             majOut: '#94a3b8', majOutInk: '#0f172a', minOut: '#334155', minOutInk: '#e2e8f0', sel: '#ffffff', selInk: '#0f172a',
-            nb: '#facc15', nbInk: '#111827', play: '#e11d48', playInk: '#ffffff', hl: '#ffffff', path: '#ffffff', node: '#172036',
+            nb: '#facc15', nbInk: '#111827', play: '#e11d48', playInk: '#ffffff', hl: '#ffffff', path: '#ffffff', arrow: '#ffffff', arrowEdge: '#111827', node: '#172036',
             nodeInk: '#e2e8f0', nodeEdge: '#64748b', nodeOn: '#ffffff', nodeOnInk: '#0f172a', pill: '#18181b', roman: '#ef4444' } },
         { id: 'emeraude', name: 'Émeraude', colors: { gbg: '#08130f', maj: '#a3e635', majInk: '#111827', min: '#0f766e', minInk: '#ffffff',
             majOut: '#a1a1aa', majOutInk: '#111827', minOut: '#3b4743', minOutInk: '#ecfdf5', sel: '#ffffff', selInk: '#111827',
-            nb: '#ec4899', nbInk: '#111827', play: '#f97316', playInk: '#111827', hl: '#ffffff', path: '#ffffff', node: '#13241d',
+            nb: '#ec4899', nbInk: '#111827', play: '#f97316', playInk: '#111827', hl: '#ffffff', path: '#ffffff', arrow: '#ffffff', arrowEdge: '#111827', node: '#13241d',
             nodeInk: '#ecfdf5', nodeEdge: '#6b7f77', nodeOn: '#ffffff', nodeOnInk: '#111827', pill: '#18181b', roman: '#ef4444' } }
     ];
     const DEFAULT_PRESET = PRESETS[0];                       // « Jour » : le thème de départ
@@ -129,7 +129,8 @@
             { label: 'Voisins P · L · R', cells: [['nb', 'Fond'], ['nbInk', 'Texte']] },
             { label: 'Accord joué', cells: [['play', 'Fond'], ['playInk', 'Texte']] },
             { label: 'Contours et surbrillance', cells: [['hl', 'Couleur']] },
-            { label: 'Chemin de la progression', cells: [['path', 'Couleur']] }] },
+            { label: 'Contour des accords de la progression', cells: [['path', 'Couleur']] },
+            { label: 'Flèches de la progression', cells: [['arrow', 'Couleur'], ['arrowEdge', 'Contour']] }] },
         { title: 'Notes', rows: [
             { label: 'Note', cells: [['node', 'Fond'], ['nodeInk', 'Texte'], ['nodeEdge', 'Contour']] },
             { label: 'Note jouée', cells: [['nodeOn', 'Fond'], ['nodeOnInk', 'Texte']] }] },
@@ -140,6 +141,23 @@
     const FILL_OF = {}; Object.keys(INK_OF).forEach((f) => { FILL_OF[INK_OF[f]] = f; });
     const TITLES = {};
     GROUPS.forEach((g) => g.rows.forEach((r) => r.cells.forEach(([k, c]) => { TITLES[k] = r.label + ' · ' + c.toLowerCase(); })));
+
+    // Épaisseur des contours (en pixels d'écran) : [clé, intitulé, infobulle, valeur de départ, maximum]. Posées sur <html> en variables CSS --w-<clé>
+    // (voir tonnetz.css). Réglage à part des couleurs : un thème ne change pas les épaisseurs.
+    const WIDTHS = [
+        ['hl', 'Surbrillance', 'Contour de l\'accord sélectionné, de l\'accord joué, des voisins et des copies de l\'accord (les voisins et les copies suivent en proportion)', 4, 10],
+        ['path', 'Progression', 'Contour des accords de la progression', 4, 10],
+        ['grid', 'Grille', 'Filets entre les triangles', 2, 8],
+        ['node', 'Notes', 'Contour des cercles de notes', 1.5, 6],
+        ['arrow', 'Flèches', 'Contour des flèches de la progression', 2, 6]
+    ];
+    const WIDTH_DEFAULTS = {}; WIDTHS.forEach(([k, , , d]) => { WIDTH_DEFAULTS[k] = d; });
+    const widthsOk = (o) => {
+        const out = {};
+        WIDTHS.forEach(([k, , , d, mx]) => { const v = parseFloat(o && o[k]); out[k] = Number.isFinite(v) ? clamp(Math.round(v * 2) / 2, 0, mx) : d; });
+        return out;
+    };
+    const fmtW = (v) => String(v).replace('.', ',') + ' px';
 
     const keysOk = (o) => {
         const out = {};
@@ -155,6 +173,7 @@
     let base = { kind: 'preset', id: DEFAULT_PRESET.id, name: DEFAULT_PRESET.name, colors: clone(DEFAULT_PRESET.colors) };   // thème de départ des réglages
     let saved = [];                                         // mes thèmes : { name, colors }
     let recent = [];                                        // dernières couleurs choisies
+    let widths = clone(WIDTH_DEFAULTS);                     // épaisseurs des contours en cours
     let sel = 'maj';                                        // couleur en cours de réglage
     let ed = { h: 0, s: 0, v: 0 };                          // sa teinte / saturation / valeur (on garde la teinte même sur un gris)
     let ui = null;                                          // éléments du popup
@@ -164,6 +183,11 @@
         const root = document.documentElement;
         KEYS.forEach((k) => root.style.setProperty('--' + kebab(k), cssVal(cur[k])));
     }
+    function applyWidths() {
+        const root = document.documentElement;
+        WIDTHS.forEach(([k]) => root.style.setProperty('--w-' + k, String(widths[k])));
+    }
+    const persistWidths = () => store.set('tonnetz.widths', widths);
     function persist() {
         store.set('tonnetz.colors', { colors: cur, base: { kind: base.kind, id: base.id, name: base.name } });
     }
@@ -399,6 +423,13 @@
 
         pop.append(head, tabs, body, foot);
         document.body.appendChild(pop);
+        // En plein écran natif, seul l'élément affiché (le réseau et la progression) est visible : le popup l'accompagne
+        const rehost = () => {
+            const host = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+            if (pop.parentNode !== host) host.appendChild(pop);
+        };
+        document.addEventListener('fullscreenchange', rehost);
+        document.addEventListener('webkitfullscreenchange', rehost);
 
         ui = { pop, head, state, close, tabEdit, tabThemes, paneEdit, paneThemes, items, target, wheel, ringThumb, sv, svThumb, swOld, swNew, hex, contrastBox,
             eye, sys, native, auto, orig, none, editor, sH, sS, sL, sR, sG, sB, shades, themeSw, recentSw, presetBox, mineBox, mineTitle, name, msg, bSave, bExport, bRevert,
@@ -456,6 +487,38 @@
                 ui.items.appendChild(row);
             });
         });
+
+        // Épaisseur des contours : un curseur par type de contour, appliqué en direct
+        ui.items.appendChild(mk('div', 'cp-gtitle', 'Épaisseur des contours'));
+        ui.wr = {};
+        WIDTHS.forEach(([key, label, tip, , mx]) => {
+            const row = mk('label', 'cp-row cp-wrow');
+            row.title = tip;
+            row.appendChild(mk('span', 'cp-rlabel', label));
+            const input = mk('input', 'cp-range cp-wrange');
+            input.type = 'range'; input.min = 0; input.max = mx; input.step = 0.5; input.setAttribute('aria-label', 'Épaisseur : ' + label);
+            const val = mk('span', 'cp-sl-val cp-wval');
+            input.addEventListener('input', () => {
+                widths[key] = parseFloat(input.value);
+                document.documentElement.style.setProperty('--w-' + key, String(widths[key]));
+                val.textContent = fmtW(widths[key]);
+                ui.wReset.disabled = WIDTHS.every(([k]) => widths[k] === WIDTH_DEFAULTS[k]);
+                persistWidths();
+            });
+            row.append(input, val);
+            ui.wr[key] = { input, val };
+            ui.items.appendChild(row);
+        });
+        ui.wReset = mk('button', 'btn small cp-wreset', 'Épaisseurs par défaut');
+        ui.wReset.type = 'button'; ui.wReset.title = 'Remettre toutes les épaisseurs de contour à leur valeur de départ';
+        ui.wReset.addEventListener('click', () => { widths = clone(WIDTH_DEFAULTS); applyWidths(); persistWidths(); refreshWidths(); });
+        ui.items.appendChild(ui.wReset);
+        refreshWidths();
+    }
+    function refreshWidths() {
+        if (!ui || !ui.wr) return;
+        WIDTHS.forEach(([k]) => { ui.wr[k].input.value = widths[k]; ui.wr[k].val.textContent = fmtW(widths[k]); });
+        ui.wReset.disabled = WIDTHS.every(([k]) => widths[k] === WIDTH_DEFAULTS[k]);
     }
 
     // Cercle chromatique (anneau = teinte) et carré (saturation en x, luminosité en y)
@@ -719,7 +782,9 @@
             else if (mine) base = { kind: 'saved', id: mine.name, name: mine.name, colors: clone(mine.colors) };
             else base = { kind: b.kind === 'import' ? 'import' : 'custom', id: b.id || '', name: b.name || 'Personnalisé', colors: clone(cur) };
         }
+        widths = widthsOk(store.get('tonnetz.widths', null));
         applyAll();
+        applyWidths();
         setEdFromHex(cur[sel]);
         build(opts.button);
         if (base.kind === 'saved') ui.name.value = base.name;
