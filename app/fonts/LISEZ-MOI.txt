@@ -1,0 +1,4 @@
+Copier ici les deux fichiers de police de Chord Scales :
+  Kalam-Regular.woff
+  Kalam-Bold.woff
+(dossier app/fonts/ de Chord Scales). Sans eux, la police manuscrite du système est utilisée.

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gym Tonnetz</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#282828">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gym Tonnetz">
+<link rel="icon" type="image/png" sizes="192x192" href="app/icons/icon-192.png">
+<link rel="apple-touch-icon" href="app/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app/css/tonnetz.css">
+</head>
+<body>
+
+<div class="app">
+
+<header class="top">
+  <h1>Gym Tonnetz</h1>
+  <span class="sub">Réseau des accords, analyse harmonique et progressions orchestrées</span>
+  <div class="themebox">
+    <button id="bTheme" class="btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="colorPop" title="Couleurs du Tonnetz" aria-label="Couleurs du Tonnetz"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 1.5C4.7 1.5 1.5 4.7 1.5 8.6c0 3.7 2.9 6.9 6.2 6.9 1.2 0 1.7-.7 1.7-1.4 0-.9-.8-1.1-.8-2 0-.8.7-1.4 1.6-1.4h1.9c2.1 0 3.9-1.2 3.9-3.3C16 3.9 12.9 1.5 9 1.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="7.4" cy="4.7" r="1.2" fill="currentColor"/><circle cx="11.4" cy="4.7" r="1.2" fill="currentColor"/></svg><span class="lbl">Couleurs</span></button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main class="layout" id="app">
+
+  <!-- ========== Réglages (à gauche) ========== -->
+  <aside class="side" aria-label="Réglages">
+
+    <section class="card info-card" aria-label="Accord sélectionné">
+      <div id="info" class="info" aria-live="polite"></div>
+    </section>
+
+    <details class="panel" open id="pAnalysis">
+      <summary>Analyse harmonique <span class="sum-note" id="anSum"></span></summary>
+      <div class="body">
+        <div class="row">
+          <button id="bAnalysis" class="btn" type="button" aria-pressed="true">Chiffrage romain</button>
+          <button id="bDim" class="btn" type="button" aria-pressed="true" title="Atténuer les accords qui n'appartiennent pas à la tonalité">Atténuer le hors-tonalité</button>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:6px">Tonique</div>
+          <div class="keys" id="tonicKeys"></div>
+        </div>
+        <div class="row">
+          <span class="label">Mode</span>
+          <div class="seg" role="group" aria-label="Mode">
+            <button class="btn" type="button" data-mode="maj" aria-pressed="true">Majeur</button>
+            <button class="btn" type="button" data-mode="min" aria-pressed="false">Mineur</button>
+          </div>
+        </div>
+        <p class="legend">La tonique et le mode définissent la tonalité : les accords qui lui appartiennent restent en couleur, les autres sont grisés (bouton « Atténuer le hors-tonalité »). Le chiffrage romain (rouge) donne la fonction de chaque accord par rapport à la tonique : <b>I</b> et <b>IV</b> majeurs en capitales, <b>ii</b> et <b>vi</b> mineurs en minuscules, <b>♭VII</b> pour un accord emprunté.</p>
+      </div>
+    </details>
+
+    <details class="panel" open id="pProg">
+      <summary>Progression et orchestre</summary>
+      <div class="body">
+        <div class="row">
+          <button id="bAdd" class="btn" type="button">+ Ajouter l'accord</button>
+          <button id="bEntry" class="btn" type="button" aria-pressed="false" title="Chaque triangle touché est ajouté à la progression">Saisie par touches</button>
+          <button id="bClear" class="btn small" type="button" style="margin-left:auto">Tout effacer</button>
+        </div>
+
+        <div class="row">
+          <label class="grow" style="min-width:150px">
+            <span class="label">Orchestre</span><br>
+            <select id="selStyle" style="width:100%">
+              <option value="classic">Classique (arpèges)</option>
+              <optgroup label="Jazz et pop">
+                <option value="swing">Swing</option>
+                <option value="pop">Pop</option>
+              </optgroup>
+              <optgroup label="Latines">
+                <option value="latin">Brasil</option>
+                <option value="cuba">Cuba</option>
+              </optgroup>
+              <optgroup label="Autres">
+                <option value="brass">Brass band</option>
+                <option value="balkan">Balkans</option>
+                <option value="piazzolla">Tango nuevo</option>
+                <option value="milongalyrique">Milonga lyrique</option>
+              </optgroup>
+            </select>
+          </label>
+          <label>
+            <span class="label">Mesure</span><br>
+            <select id="selMeter">
+              <option value="4/4">4/4</option>
+              <option value="3/4">3/4</option>
+              <option value="2/4">2/4</option>
+              <option value="6/8">6/8</option>
+              <option value="9/8">9/8</option>
+              <option value="12/8">12/8</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          <span class="label">Tempo</span> <span id="bpmVal" class="hint"></span>
+          <input id="rBpm" type="range" min="40" max="220" step="1" value="100">
+        </label>
+
+        <details class="sub-details">
+          <summary class="hint">Mixage de l'orchestre</summary>
+          <div class="mixer" style="margin-top:10px" id="mixer"></div>
+        </details>
+
+        <hr class="rule">
+
+        <div class="row">
+          <input id="saveName" type="text" placeholder="Nom de la progression" class="grow" maxlength="60" aria-label="Nom de la progression">
+          <button id="bSave" class="btn" type="button">Enregistrer</button>
+        </div>
+        <div id="saves" class="savelist"></div>
+        <div class="row">
+          <button id="bExport" class="btn small" type="button">Exporter (.json)</button>
+          <button id="bImport" class="btn small" type="button">Importer</button>
+          <input id="fileImport" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel" id="pCustom">
+      <summary>Accords personnalisés <span class="sum-note" id="cuSum"></span></summary>
+      <div class="body">
+        <div>
+          <div class="label" style="margin-bottom:6px">Fondamentale</div>
+          <div class="keys" id="cuRoot"></div>
+        </div>
+        <div class="row"><span class="label" style="min-width:68px">Tierce</span><div class="seg" id="cuThird"></div></div>
+        <div class="row"><span class="label" style="min-width:68px">Quinte</span><div class="seg" id="cuFifth"></div></div>
+        <div class="row"><span class="label" style="min-width:68px">Septième</span><div class="seg" id="cuSev" style="flex-wrap:wrap"></div></div>
+        <div class="row"><span class="label" style="min-width:68px">Tensions</span><div class="row tight" id="cuExt"></div></div>
+        <div id="cuPreview" class="info" style="min-height:0;margin:0"></div>
+        <div class="row">
+          <button id="cuPlay" class="btn" type="button">▶ Écouter</button>
+          <button id="cuAdd" class="btn" type="button">+ Ajouter à la progression</button>
+          <button id="cuSave" class="btn" type="button">★ Enregistrer</button>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:6px">Mes accords</div>
+          <div id="cuList" class="row tight"></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel" id="pHelp">
+      <summary>Lire le réseau</summary>
+      <div class="body">
+        <p class="legend">
+          <b>Horizontalement</b> : quintes justes (+7 demi-tons). <b>Diagonale ↗</b> : tierces majeures (+4). <b>Diagonale ↖</b> : tierces mineures (+3).<br>
+          Un <b>triangle</b> relie trois notes : c'est un accord parfait. Pointe en haut = majeur, pointe en bas = mineur.<br>
+          Deux triangles qui partagent une arête n'ont que <b>une note de différence</b> et deux notes communes. Les transformations néo-riemanniennes s'y lisent d'un coup d'œil :
+          <b>P</b> (parallèle, même fondamentale : Do ↔ Do mineur), <b>L</b> (sensible : Do ↔ Mi mineur), <b>R</b> (relatif : Do ↔ La mineur).<br>
+          Le réseau se prolonge à l'infini dans toutes les directions : une même note ou un même accord revient régulièrement, les copies d'un accord sont signalées en pointillés.
+        </p>
+      </div>
+    </details>
+
+  </aside>
+
+  <!-- ========== Le réseau et la progression (à droite) ========== -->
+  <section class="stage" id="stage" aria-label="Tonnetz">
+    <div class="toolbar">
+      <button id="bZoomOut" class="btn sq" type="button" title="Zoom arrière" aria-label="Zoom arrière">−</button>
+      <span id="zoomVal" class="zoomval">1×</span>
+      <button id="bZoomIn" class="btn sq" type="button" title="Zoom avant" aria-label="Zoom avant">+</button>
+      <button id="bZoomReset" class="btn small" type="button" title="Revenir sur l'accord sélectionné ou sur la tonique">Recentrer</button>
+      <span class="sep"></span>
+      <button id="bNames" class="btn small" type="button" title="Noms des notes"></button>
+      <button id="bSpell" class="btn small" type="button" title="Dièses ou bémols"></button>
+      <button id="bLabels" class="btn small" type="button" aria-pressed="true" title="Noms des accords dans les triangles">Accords</button>
+      <button id="bSound" class="btn small" type="button" aria-pressed="true" title="Son">Son</button>
+      <span class="grow"></span>
+      <span class="zoomhint">Glissez pour explorer · pincez ou Ctrl + molette pour zoomer</span>
+      <button id="bFull" class="btn sq" type="button" aria-pressed="false" title="Plein écran : le réseau et la progression seulement" aria-label="Plein écran">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5v-4h4M11.5 2.5h4v4M15.5 11.5v4h-4M6.5 15.5h-4v-4"/></svg>
+      </button>
+    </div>
+
+    <div class="boardwrap" id="boardwrap">
+      <svg id="board" role="img" aria-label="Réseau de notes, les triangles sont des accords">
+        <g id="vp">
+          <g id="triLayer"></g>
+          <g id="pathLayer"></g>
+          <g id="labelLayer"></g>
+          <g id="nodeLayer"></g>
+        </g>
+      </svg>
+      <button id="bFullExit" class="btn sq fs-exit" type="button" title="Quitter le plein écran" aria-label="Quitter le plein écran">
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5v4h-4M15.5 6.5h-4v-4M11.5 15.5v-4h4M2.5 11.5h4v4"/></svg>
+      </button>
+    </div>
+
+    <div class="progbar" id="progbar" aria-label="Progression">
+      <div class="prog-head">
+        <button id="bPlay" class="btn primary" type="button">▶ Lire</button>
+        <button id="bLoop" class="btn" type="button" aria-pressed="true" title="Lecture en boucle">Boucle</button>
+        <span id="counter" class="counter"></span>
+        <span id="status" class="status"></span>
+        <span id="progSum" class="sum-note"></span>
+      </div>
+      <div id="chips" class="chips" aria-label="Accords de la progression"></div>
+      <div id="chipTools" class="row tight" hidden>
+        <button id="bLeft" class="btn small sq" type="button" title="Déplacer vers la gauche" aria-label="Déplacer vers la gauche">◀</button>
+        <button id="bRight" class="btn small sq" type="button" title="Déplacer vers la droite" aria-label="Déplacer vers la droite">▶</button>
+        <button id="bDup" class="btn small" type="button">Dupliquer</button>
+        <span class="label" style="margin-left:6px">Durée</span>
+        <div class="seg" id="durSeg" role="group" aria-label="Durée en mesures"></div>
+        <button id="bDel" class="btn small" type="button">Retirer</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+</div>
+
+<!-- Bibliothèque audio et sons -->
+<script src="app/vendor/soundfont-player.min.js"></script>
+<script src="app/js/audio/local-soundfonts.js"></script>
+<!-- Théorie musicale, tables de rythmes et réglages audio -->
+<script src="app/js/theory.js"></script>
+<script src="app/js/band-patterns.js"></script>
+<script src="app/js/audio-config.js"></script>
+<!-- Orchestre : plans d'accompagnement par style (l'ordre compte : les helpers d'abord) -->
+<script src="app/js/band/band-helpers.js"></script>
+<script src="app/js/band/pop-plan.js"></script>
+<script src="app/js/band/brass-plan.js"></script>
+<script src="app/js/band/piazzolla-plan.js"></script>
+<script src="app/js/band/latin-plan.js"></script>
+<script src="app/js/band/balkan-plan.js"></script>
+<script src="app/js/band/cuban-plan.js"></script>
+<script src="app/js/band/meter-plan.js"></script>
+<script src="app/js/band/ternary-plan.js"></script>
+<script src="app/js/band/bass-lines.js"></script>
+<script src="app/js/band/swing-plan.js"></script>
+<script src="app/js/band/classic-plan.js"></script>
+<script src="app/js/band/phrase-plan.js"></script>
+<script src="app/js/band/band-state.js"></script>
+<!-- Progression, synthèse de batterie, notes -->
+<script src="app/js/grid/generation.js"></script>
+<script src="app/js/grid/transport.js"></script>
+<script src="app/js/audio/drum-synths.js"></script>
+<script src="app/js/audio/note-events.js"></script>
+<!-- Gym Tonnetz -->
+<script src="app/js/tonnetz-band.js"></script>
+<script src="app/js/colors.js"></script>
+<script src="app/js/tonnetz.js"></script>
+<!-- Hors ligne et installation -->
+<script src="app/js/offline.js"></script>
+</body>
+</html>
