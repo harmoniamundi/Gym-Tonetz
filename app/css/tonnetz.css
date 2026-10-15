@@ -337,7 +337,36 @@ body.fs-lock { overflow: hidden; }
 @media (max-width: 520px) {
   .side { padding: 10px; }
   .mixer { grid-template-columns: 76px 1fr 34px; }
-  .toolbar { padding: 6px 8px; }
+}
+
+/* ---------- téléphone (portrait) ---------- */
+@media (max-width: 520px) {
+  :root { --top-h: 40px; }
+  .top { height: var(--top-h); padding: 0 12px; }
+  /* À l'ouverture, le réseau, ses boutons et la progression (deux rangées d'accords en bas) remplissent tout l'écran sous le titre ;
+     les réglages se trouvent plus bas, en faisant défiler la page. */
+  .stage { position: relative; height: calc(100vh - var(--top-h)); height: calc(100dvh - var(--top-h)); min-height: 380px; }
+  /* boutons du haut et du bas du réseau : chacun sur une seule ligne */
+  .toolbar { flex-wrap: nowrap; gap: 4px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar .sep, .toolbar .zoomhint { display: none; }
+  .toolbar .grow { flex: 1 1 0; min-width: 0; }
+  .toolbar .btn { flex: none; }
+  .toolbar .btn.sq { width: 30px; height: 30px; }
+  .toolbar .btn.small:not(.sq) { height: 30px; padding: 0 7px; font-size: .72rem; }
+  .progbar { padding-left: 8px; padding-right: 8px; }
+  .chips { min-height: calc(var(--chip-h) * 2 + 8px + 18px); }     /* la grille d'accords garde ses deux rangées, même vide : la mise en page ne bouge pas quand on ajoute des accords */
+  .prog-head { flex-wrap: nowrap; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+  .prog-head::-webkit-scrollbar { display: none; }
+  .prog-head .btn { flex: none; height: 32px; padding: 0 6px; font-size: .72rem; }
+  .prog-head .btn.primary { padding: 0 8px; }
+  .prog-head .btn.sq { width: 28px; padding: 0; }
+  #bTheme { padding: 0 6px; margin-left: auto; }
+  /* mesure en cours et messages : petites étiquettes posées sur le haut du réseau, pour ne pas allonger la ligne de boutons */
+  .counter, .status { position: absolute; left: 8px; top: 48px; z-index: 4; min-width: 0; max-width: calc(100% - 16px); padding: 2px 9px; border-radius: 999px;
+    background: rgba(0, 0, 0, .65); color: #fff; font-size: .75rem; pointer-events: none; }
+  .status { top: 74px; }
+  .counter:empty, .status:empty { display: none; }
 }
 
 /* Pastille d'état du mode hors ligne (js/offline.js) */

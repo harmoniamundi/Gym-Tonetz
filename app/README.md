@@ -78,3 +78,5 @@ app/
 - Un accord sélectionné qui fait partie de la progression garde son contour de progression visible par-dessus la sélection ; les flèches de la progression contournent la pastille « 1 » du premier accord.
 - Son sur iPhone même en mode silencieux : voir `js/audio/ios-silent-mode.js`.
 - Sur téléphone, les boutons de zoom (− / +) sont masqués : on zoome en pinçant l'écran.
+- **Téléphone (portrait)** : à l'ouverture, le réseau, ses boutons (une seule ligne en haut, une seule ligne en bas) et les deux rangées d'accords de la progression remplissent tout l'écran sous le titre ; les réglages sont plus bas, en faisant défiler la page. La mesure en cours et les messages s'affichent en petite étiquette sur le haut du réseau.
+- **Écran toujours allumé** sur téléphone / tablette tant que l'appli est ouverte (`js/wake-lock.js`, API Screen Wake Lock : Safari iOS 16.4+, Chrome Android).

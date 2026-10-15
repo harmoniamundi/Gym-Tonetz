@@ -30,6 +30,7 @@ const SHELL_FILES = [
     'app/icons/apple-touch-icon.png',
     'app/vendor/soundfont-player.min.js',
     'app/js/audio/ios-silent-mode.js',
+    'app/js/wake-lock.js',
     'app/js/audio/local-soundfonts.js',
     'app/js/theory.js',
     'app/js/band-patterns.js',
