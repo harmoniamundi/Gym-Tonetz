@@ -88,14 +88,14 @@
         'play', 'playInk', 'hl', 'path', 'arrow', 'arrowEdge', 'node', 'nodeInk', 'nodeEdge', 'nodeOn', 'nodeOnInk', 'pill', 'roman'];
 
     const PRESETS = [
+        { id: 'epure', name: 'Épure', colors: { gbg: '#131315', maj: '#a3a3a3', majInk: '#111827', min: '#636363', minInk: '#ffffff',
+            majOut: '#ffffff', majOutInk: '#27272a', minOut: '#f8f8ff', minOutInk: '#000000', sel: '#111827', selInk: '#ffffff',
+            nb: '#06b6d4', nbInk: '#0b1220', play: '#e11d48', playInk: '#ffffff', hl: '#111827', path: '#e11d48', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
+            nodeInk: '#111827', nodeEdge: '#71717a', nodeOn: '#111827', nodeOnInk: '#ffffff', pill: 'none', roman: '#ef4444' } },
         { id: 'jour', name: 'Jour', colors: { gbg: '#f4f4f5', maj: '#f59e0b', majInk: '#111827', min: '#1d4ed8', minInk: '#ffffff',
             majOut: '#d4d4d8', majOutInk: '#27272a', minOut: '#71717a', minOutInk: '#ffffff', sel: '#111827', selInk: '#ffffff',
             nb: '#06b6d4', nbInk: '#0b1220', play: '#e11d48', playInk: '#ffffff', hl: '#111827', path: '#111827', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
             nodeInk: '#111827', nodeEdge: '#71717a', nodeOn: '#111827', nodeOnInk: '#ffffff', pill: '#18181b', roman: '#ef4444' } },
-        { id: 'lagon', name: 'Lagon', colors: { gbg: '#f1f5f9', maj: '#06b6d4', majInk: '#0b1220', min: '#5b21b6', minInk: '#ffffff',
-            majOut: '#cbd5e1', majOutInk: '#1e293b', minOut: '#64748b', minOutInk: '#ffffff', sel: '#0f172a', selInk: '#ffffff',
-            nb: '#facc15', nbInk: '#111827', play: '#e11d48', playInk: '#ffffff', hl: '#0f172a', path: '#0f172a', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
-            nodeInk: '#0f172a', nodeEdge: '#64748b', nodeOn: '#0f172a', nodeOnInk: '#ffffff', pill: '#18181b', roman: '#ef4444' } },
         { id: 'prairie', name: 'Prairie', colors: { gbg: '#f4f4f5', maj: '#84cc16', majInk: '#111827', min: '#115e59', minInk: '#ffffff',
             majOut: '#d4d4d8', majOutInk: '#27272a', minOut: '#71717a', minOutInk: '#ffffff', sel: '#111827', selInk: '#ffffff',
             nb: '#ec4899', nbInk: '#111827', play: '#f97316', playInk: '#111827', hl: '#111827', path: '#111827', arrow: '#ffffff', arrowEdge: '#111827', node: '#ffffff',
@@ -113,7 +113,7 @@
             nb: '#ec4899', nbInk: '#111827', play: '#f97316', playInk: '#111827', hl: '#ffffff', path: '#ffffff', arrow: '#ffffff', arrowEdge: '#111827', node: '#13241d',
             nodeInk: '#ecfdf5', nodeEdge: '#6b7f77', nodeOn: '#ffffff', nodeOnInk: '#111827', pill: '#18181b', roman: '#ef4444' } }
     ];
-    const DEFAULT_PRESET = PRESETS[0];                       // « Jour » : le thème de départ
+    const DEFAULT_PRESET = PRESETS[0];                       // « Épure » : le thème de départ
 
     // Les éléments du réseau, tels qu'ils apparaissent dans le popup : [clé, intitulé de la case]
     const GROUPS = [
@@ -773,7 +773,8 @@
         saved = (store.get('tonnetz.themes', []) || []).filter((t) => t && typeof t.name === 'string' && t.colors)
             .map((t) => ({ name: t.name.slice(0, 40), colors: keysOk(t.colors) }));
         recent = (store.get('tonnetz.colors.recent', []) || []).map(hexNorm).filter(Boolean).slice(0, 12);
-        if (stored && stored.colors) {
+        const retired = stored && stored.base && stored.base.kind === 'preset' && stored.base.id === 'lagon';   // « Lagon » n'est plus proposé
+        if (stored && stored.colors && !retired) {
             cur = keysOk(stored.colors);
             const b = stored.base || {};
             const preset = b.kind === 'preset' ? PRESETS.find((p) => p.id === b.id) : null;

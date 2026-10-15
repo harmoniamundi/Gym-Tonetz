@@ -29,17 +29,17 @@
   --on: #2563eb; --on-fg: #ffffff; --roman: #ef4444;   /* rouge du chiffrage romain, comme la fonction tonale de Chord Scales */
 }
 
-/* Réseau : couleurs par défaut = thème « Jour ». Elles sont réécrites en direct par colors.js (réglages, thèmes proposés ou enregistrés). */
+/* Réseau : couleurs par défaut = thème « Épure ». Elles sont réécrites en direct par colors.js (réglages, thèmes proposés ou enregistrés). */
 :root {
-  --gbg: #f4f4f5;
-  --maj: #f59e0b;
+  --gbg: #131315;
+  --maj: #a3a3a3;
   --maj-ink: #111827;
-  --min: #1d4ed8;
+  --min: #636363;
   --min-ink: #ffffff;
-  --maj-out: #d4d4d8;
+  --maj-out: #ffffff;
   --maj-out-ink: #27272a;
-  --min-out: #71717a;
-  --min-out-ink: #ffffff;
+  --min-out: #f8f8ff;
+  --min-out-ink: #000000;
   --sel: #111827;
   --sel-ink: #ffffff;
   --nb: #06b6d4;
@@ -47,7 +47,7 @@
   --play: #e11d48;
   --play-ink: #ffffff;
   --hl: #111827;
-  --path: #111827;
+  --path: #e11d48;
   --arrow: #ffffff;        /* flèches de la progression : couleur et contour */
   --arrow-edge: #111827;
   --node: #ffffff;
@@ -55,7 +55,7 @@
   --node-edge: #71717a;
   --node-on: #111827;
   --node-on-ink: #ffffff;
-  --pill: #18181b;   /* fond du chiffrage romain (pastille sombre derrière le texte rouge) */
+  --pill: transparent;   /* fond du chiffrage romain (« aucune couleur » dans Épure ; une pastille sombre dans les autres thèmes) */
 }
 
 * { box-sizing: border-box; }
@@ -138,6 +138,8 @@ details.panel > summary::after { content: "▸"; margin-left: auto; color: var(-
 details.panel[open] > summary::after { transform: rotate(90deg); }
 details.panel > .body { padding: 2px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
 .sum-note { font-weight: 400; color: var(--muted); font-size: .78rem; text-transform: none; letter-spacing: 0; }
+/* Nom de la tonalité (« Do majeur ») dans l'en-tête de l'analyse : bien lisible */
+#anSum { color: #fff; font-size: 1.15rem; font-weight: 700; margin-left: 6px; }
 .sub-details > summary { cursor: pointer; }
 .rule { border: 0; border-top: 1px solid var(--line); width: 100%; margin: 2px 0; }
 
@@ -194,6 +196,8 @@ svg#board { position: absolute; inset: 0; display: block; width: 100%; height: 1
 svg#board.dragging { cursor: grabbing; }
 .zoomhint { display: none; font-size: .72rem; color: var(--muted); white-space: nowrap; margin-right: 6px; }
 @media (min-width: 1380px) { .zoomhint { display: inline; } }
+/* Téléphone (portrait, ou paysage tactile) : pas de boutons de zoom, on pince l'écran */
+@media (max-width: 520px), (pointer: coarse) and (max-height: 520px) { #bZoomOut, #bZoomIn, #zoomVal { display: none; } }
 .btn.fs-exit { display: none; position: absolute; top: 12px; right: 12px; z-index: 5; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 
 /* triangles : des tuiles séparées par un filet de la couleur du fond */

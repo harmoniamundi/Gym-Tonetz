@@ -207,6 +207,7 @@
     const App = { audioCtx: null, pianoInstrument: null, _pianoPromise: null, activeAudioNodes: [], reverbInput: null };
 
     function ensureCtx() {
+        if (typeof unlockIOSAudio === 'function') unlockIOSAudio();   // iPhone : son audible même en mode silencieux
         if (!App.audioCtx) {
             const AC = window.AudioContext || window.webkitAudioContext;
             if (!AC) return false;
@@ -535,8 +536,10 @@
     }
     function clearSel() { R.sel = null; R.note = null; R.custom = null; }
 
+    let arrowsOnProg = false;   // vrai juste après le choix d'un accord dans la progression : ← / → passent alors d'un accord à l'autre
     function selectTri(key, opts) {
         const o = Object.assign({ play: true }, opts || {});
+        arrowsOnProg = false;
         clearSel(); R.sel = key;
         const t = triByKey(key);
         if (o.play) playChord(t.root, triId(t));
@@ -576,11 +579,53 @@
     }
     function onNodeTap(pc) { selectNote(pc); }
 
+    // Navigation au clavier : les flèches déplacent la sélection d'un triangle à l'autre, dans le sens de l'écran.
+    // ← / → : le triangle voisin dans la même rangée (ils partagent une arête) ; ↑ / ↓ : la rangée du dessus / du dessous, juste à la verticale.
+    function stepTri(t, dir) {
+        const { i, j } = t, up = t.kind === 'u';
+        if (dir === 'right') return up ? T('d', i, j) : T('u', i + 1, j);
+        if (dir === 'left') return up ? T('d', i - 1, j) : T('u', i, j);
+        if (dir === 'up') return up ? T('d', i - 1, j + 1) : T('u', i, j + 1);
+        return up ? T('d', i, j - 1) : T('u', i + 1, j - 1);
+    }
+    function triNearViewCenter() {
+        const f = viewCenter(), j0 = Math.floor(-f.cy / DY);
+        let best = null, bd = Infinity;
+        for (let j = j0 - 1; j <= j0 + 1; j++) {
+            const i0 = Math.round(f.cx / DX - j / 2);
+            for (let i = i0 - 2; i <= i0 + 2; i++) {
+                for (const kind of ['u', 'd']) {
+                    const t = T(kind, i, j), d = (t.cx - f.cx) ** 2 + (t.cy - f.cy) ** 2;
+                    if (d < bd) { bd = d; best = t; }
+                }
+            }
+        }
+        return best;
+    }
+    function moveOnBoard(dir) {
+        // Un bouton resté actif (Son, Couleurs…) ne doit pas intercepter la touche Entrée qui ajoute le triangle à la progression
+        const ae = document.activeElement;
+        if (ae && ae !== document.body && ae.blur && ae.tagName === 'BUTTON') ae.blur();
+        // Sans triangle sélectionné, on part de celui qui est au centre de l'écran
+        const t = R.sel ? stepTri(triByKey(R.sel), dir) : triNearViewCenter();
+        R.progSel = S.entry ? null : progIndexFor(t.key);
+        selectTri(t.key);
+        renderChips();
+        ensureVisible(t);
+        if (S.entry) addCurrent();
+    }
+    // Maj + flèche : fait glisser la vue sans changer la sélection
+    function panBy(dir) {
+        const step = 160, dx = dir === 'left' ? step : dir === 'right' ? -step : 0, dy = dir === 'up' ? step : dir === 'down' ? -step : 0;
+        animateView(view.tx + dx, view.ty + dy, view.k);
+    }
+
     // ------------------------------------------------------------------------------------------------------------------
     // Peinture du réseau
     // ------------------------------------------------------------------------------------------------------------------
     function paint() {
         const cur = current();
+        $('bDeselect').disabled = !cur && R.note === null;
         const playItem = R.playing >= 0 ? R.prog[R.playing] : null;
         const shown = playItem ? { root: playItem.r, id: playItem.id } : (cur ? { root: cur.root, id: cur.id } : null);
         const lit = new Set();
@@ -616,7 +661,9 @@
             if (!shown && R.note !== null && t.pcs.includes(R.note)) hl += ' near';          // triades qui contiennent la note
             if (isSel) { hl += ' sel'; pr = 2; }
             if (isPlay) { hl += ' play'; pr = 3; }
-            if (hl) marks.push({ t, cls: hl.trim(), pr });
+            // Accord sélectionné qui fait aussi partie de la progression : son contour de progression est dessiné par-dessus celui de la sélection
+            if (isSel && inprog.has(t.key)) { marks.push({ t, cls: 'sel', pr: 2 }, { t, cls: 'inprog', pr: 2.5 }); }
+            else if (hl) marks.push({ t, cls: hl.trim(), pr });
             // couleur du texte : celle qui se lit le mieux sur la case (voir les variables --*-ink du CSS)
             const tone = isPlay ? 'play' : (isSel ? 'sel' : (isNb ? 'nb' : (t.minor ? 'min' : 'maj') + (outKey ? 'out' : '')));
             if (e.tone !== tone) {
@@ -745,6 +792,11 @@
         const s1 = (q.x - p.x) * (y - p.y) - (q.y - p.y) * (x - p.x), s2 = (r.x - q.x) * (y - q.y) - (r.y - q.y) * (x - q.x), s3 = (p.x - r.x) * (y - r.y) - (p.y - r.y) * (x - r.x);
         return (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0);
     };
+    // Pastille « 1 » du premier accord de la progression (dessinée par drawPath) : un obstacle de plus pour les flèches
+    function startDot() {
+        const s = R.inst.find(Boolean);
+        return s ? { x: s.cx, y: s.cy - (s.kind === 'u' ? 48 : 50), r: 13 } : null;
+    }
     // Obstacles autour de deux triangles : inscriptions de tous les triangles de la zone, et (si demandé) cercles des notes
     function arrowObstacles(a, b, withNodes, pad) {
         const box = { x0: Math.min(a.cx, b.cx) - pad, x1: Math.max(a.cx, b.cx) + pad, y0: Math.min(a.cy, b.cy) - pad, y1: Math.max(a.cy, b.cy) + pad };
@@ -760,6 +812,8 @@
                 if (withNodes) { const n = N(i, j); if (n.x >= box.x0 && n.x <= box.x1 && n.y >= box.y0 && n.y <= box.y1) obs.push({ k: 'c', x: n.x, y: n.y, r: 24 }); }
             }
         }
+        const dot = startDot();
+        if (dot && dot.x >= box.x0 - 20 && dot.x <= box.x1 + 20 && dot.y >= box.y0 - 20 && dot.y <= box.y1 + 20) obs.push({ k: 'c', x: dot.x, y: dot.y, r: dot.r + 2 });
         return { obs, box };
     }
     // Plus court chemin (Dijkstra sur grille, 8 voisins) des abords des inscriptions de a vers ceux de b, en restant à au moins `clear` px
@@ -936,9 +990,17 @@
             return { l: [B.x + nx * hw, B.y + ny * hw], r: [B.x - nx * hw, B.y - ny * hw], t: [tip.x, tip.y] };
         };
         const he = head(P1, c[n - 1]);
+        // Zone d'une pointe (un peu plus large qu'elle, contour compris) : drawPath y redessine la flèche par-dessus toutes les autres
+        const zone = (B, h) => {
+            const dx = h.t[0] - B.x, dy = h.t[1] - B.y, dl = Math.hypot(dx, dy) || 1, ux = dx / dl, uy = dy / dl, ex = (h.l[0] - h.r[0]) / (2 * hw || 1), ey = (h.l[1] - h.r[1]) / (2 * hw || 1), pad = 6;
+            const q = [[h.l[0] + ex * pad - ux * 2, h.l[1] + ey * pad - uy * 2], [h.t[0] + ux * pad, h.t[1] + uy * pad], [h.r[0] - ex * pad - ux * 2, h.r[1] - ey * pad - uy * 2]];
+            return q.map((v) => v[0].toFixed(1) + ',' + v[1].toFixed(1)).join(' ');
+        };
+        const heads = [zone(P1, he)];
         let all;
         if (both) {
             const hs = head(P0, c[0]);
+            heads.push(zone(P0, hs));
             all = [hs.t, hs.l].concat(left, [he.l, he.t, he.r], right.reverse(), [hs.r]);
         } else {
             // bout arrondi : demi-cercle derrière le point de départ
@@ -953,7 +1015,7 @@
             const p = all[i], q = all[(i + 1) % all.length], len = Math.hypot(q[0] - p[0], q[1] - p[1]), k = Math.max(1, Math.ceil(len / 3));
             for (let j = 0; j < k; j++) pts.push({ x: p[0] + (q[0] - p[0]) * j / k, y: p[1] + (q[1] - p[1]) * j / k });
         }
-        return { d: 'M' + f(all[0]) + ' ' + all.slice(1).map((q) => 'L' + f(q)).join(' ') + ' Z', pts, L };
+        return { d: 'M' + f(all[0]) + ' ' + all.slice(1).map((q) => 'L' + f(q)).join(' ') + ' Z', pts, L, heads };
     }
     // La police des accords (Kalam) se charge après la page : les largeurs mesurées avant son arrivée sont à refaire
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fontW.clear(); arrowCache.clear(); drawPath(); }).catch(() => {});
@@ -1009,19 +1071,21 @@
                 for (const [hl0, hw0] of ARROW_HEADS) {               // pointe de plus en plus petite jusqu'à ce qu'elle ne touche plus rien
                     const hl = Math.min(hl0, L * (both ? 0.3 : 0.5));
                     const r = ribbon(center, both, hl, Math.min(hw0, hl * 0.65));
-                    if (minClear(r.pts, obs) >= 0.6) return { d: r.d, center };
+                    if (minClear(r.pts, obs) >= 0.6) return { d: r.d, center, heads: r.heads };
                 }
             }
         }
         if (fallback) {
             const hl = Math.min(ARROW_HEADS[1][0], fallback.L * (both ? 0.3 : 0.5));
-            return { d: ribbon(fallback.center, both, hl, Math.min(ARROW_HEADS[1][1], hl * 0.65)).d, center: fallback.center };
+            const r = ribbon(fallback.center, both, hl, Math.min(ARROW_HEADS[1][1], hl * 0.65));
+            return { d: r.d, center: fallback.center, heads: r.heads };
         }
         // pas de passage : ruban droit entre les deux accords (comme avant, mais lisse)
         const ux = (b.cx - a.cx) / (dist || 1), uy = (b.cy - a.cy) / (dist || 1), trim = Math.max(13, Math.min(34, (dist - 50) / 2));
         const line = [{ x: a.cx + ux * trim, y: a.cy + uy * trim }, { x: b.cx - ux * trim, y: b.cy - uy * trim }];
         const L = dist - 2 * trim;
-        return { d: ribbon(line, both, Math.min(18, L * (both ? 0.3 : 0.5)), 9).d, center: line };
+        const r = ribbon(line, both, Math.min(18, L * (both ? 0.3 : 0.5)), 9);
+        return { d: r.d, center: line, heads: r.heads };
     }
 
     function drawPath() {
@@ -1041,14 +1105,23 @@
             if (a === e.a) e.fwd = true; else e.back = true;
         }
         const placed = [];     // trajets des flèches déjà dessinées : les suivantes évitent de les longer (elles peuvent les croiser)
+        const tips = [];       // pointes à redessiner par-dessus toutes les flèches
         for (const e of pairs.values()) {
             const r = arrowD(e.a, e.b, e.fwd && e.back, placed);
             el('path', { d: r.d, class: 'arrow' }, layer);
             placed.push(resample(r.center, 3));
+            (r.heads || []).forEach((h) => tips.push({ d: r.d, h }));
         }
-        const s = pts[0], y = s.cy - (s.kind === 'u' ? 48 : 50);
-        el('circle', { cx: s.cx, cy: y, r: 13, class: 'stepdot' }, layer);
-        el('text', { x: s.cx, y }, layer).textContent = '1';
+        // Là où deux flèches se chevauchent, la pointe de chacune passe toujours au-dessus de l'autre flèche :
+        // on redessine chaque flèche, limitée à la zone de sa pointe, après toutes les autres.
+        tips.forEach((o, i) => {
+            const id = 'arrowtip' + i;
+            el('polygon', { points: o.h }, el('clipPath', { id }, layer));
+            el('path', { d: o.d, class: 'arrow', 'clip-path': 'url(#' + id + ')' }, layer);
+        });
+        const dot = startDot();
+        el('circle', { cx: dot.x, cy: dot.y, r: dot.r, class: 'stepdot' }, layer);
+        el('text', { x: dot.x, y: dot.y }, layer).textContent = '1';
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -1265,6 +1338,7 @@
         const it = R.prog[i];
         if (!it) return;
         R.progSel = i;
+        arrowsOnProg = true;
         const playing = band && band.isPlaying;
         if (it.id === TRI_MAJ || it.id === TRI_MIN) {
             const t = R.inst[i] || nearestInstance(it.r, it.id === TRI_MIN, null);
@@ -1803,6 +1877,7 @@
         $('anSum').textContent = nm(S.tonic) + (S.mode === 'maj' ? ' majeur' : ' mineur');
     }
     function initToolbar() {
+        $('bDeselect').addEventListener('click', () => { clearSel(); R.progSel = null; arrowsOnProg = false; refreshSelection(); });
         $('bNames').addEventListener('click', () => { S.fr = !S.fr; saveSettings(); refreshAll(); });
         $('bSpell').addEventListener('click', () => { S.spell = S.spell === 'auto' ? 's' : (S.spell === 's' ? 'f' : 'auto'); saveSettings(); refreshAll(); });
         $('bLabels').addEventListener('click', () => { S.labels = !S.labels; saveSettings(); refreshAll(); });
@@ -1828,13 +1903,21 @@
         document.addEventListener('keydown', (e) => {
             const tag = (e.target && e.target.tagName) || '';
             if (/INPUT|SELECT|TEXTAREA/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
-            // ← / → : quand un accord de la progression est sélectionné, passent à l'accord précédent / suivant (sans boucler)
-            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && R.progSel !== null && R.prog[R.progSel] && !(e.target.closest && e.target.closest('#colorPop'))) {
+            if (/^Arrow(Left|Right|Up|Down)$/.test(e.key) && !(e.target.closest && e.target.closest('#colorPop'))) {
+                const dir = e.key.slice(5).toLowerCase();
+                // Juste après le choix d'un accord de la progression, ← / → passent à l'accord précédent / suivant (sans boucler)
+                if (arrowsOnProg && !e.shiftKey && (dir === 'left' || dir === 'right') && R.progSel !== null && R.prog[R.progSel]) {
+                    e.preventDefault();
+                    const j = R.progSel + (dir === 'left' ? -1 : 1);
+                    if (j >= 0 && j < R.prog.length) selectItem(j);
+                    return;
+                }
                 e.preventDefault();
-                const j = R.progSel + (e.key === 'ArrowLeft' ? -1 : 1);
-                if (j >= 0 && j < R.prog.length) selectItem(j);
+                if (e.shiftKey) panBy(dir); else moveOnBoard(dir);
                 return;
             }
+            // Entrée : ajoute à la progression le triangle sélectionné dans le réseau (sauf si un bouton ou un lien a le focus : Entrée l'active)
+            if (e.key === 'Enter' && R.sel && !/^(BUTTON|A|SUMMARY)$/.test(tag) && !(e.target.closest && e.target.closest('#colorPop'))) { e.preventDefault(); addCurrent(); return; }
             if (e.key === ' ' && tag !== 'BUTTON') { e.preventDefault(); togglePlay(); }
             else if ((e.key === 'Delete' || e.key === 'Backspace') && R.progSel !== null && tag !== 'BUTTON') { e.preventDefault(); removeSelected(); }
             else if (e.key === '+' || e.key === '=') $('bZoomIn').click();
